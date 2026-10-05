@@ -250,9 +250,16 @@ describe('similarity detection and clarification (FR16)', () => {
 describe('revisions and private documents', () => {
   test('editing an approved project sends it back to review with the same code', async () => {
     const { client } = await approvedGraduate();
-    const created = (await submit(client, ideaFields({ similarityAcknowledged: 'true' }))).body.project;
+    // Unique wording per run so it never matches earlier approved test projects.
+    const token = unique();
+    const own = {
+      sector: 'Creative & Media',
+      description: `Studio ${token} records oral histories from elders in Huye and Nyanza and turns them into illustrated audio books for primary schools, archived with the district libraries.`,
+    };
+    const created = (await submit(client, ideaFields({ ...own, title: `Story studio ${token}` }))).body.project;
+    expect(created.status).toBe('pending_review');
     await approveProjectDirectly(created.id);
-    const fields = ideaFields({ title: `${created.title} v2`, similarityAcknowledged: 'true' });
+    const fields = ideaFields({ ...own, title: `${created.title} v2` });
     let req = client.patch(`/api/projects/${created.id}`);
     for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
     const res = await req;

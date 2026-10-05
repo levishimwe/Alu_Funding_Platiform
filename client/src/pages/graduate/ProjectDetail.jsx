@@ -99,8 +99,9 @@ function UploadEvidence({ project, onSaved }) {
     <form onSubmit={submit} className="mt-4 space-y-2 border-t border-line pt-4">
       <p className="text-sm font-medium">Add a document requested by an administrator</p>
       {error && <Alert type="error">{error}</Alert>}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <select className="input sm:w-56" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Document type">
+      {/* Stacked: this form sits in the narrow sidebar card. */}
+      <div className="flex flex-col gap-2">
+        <select className="input" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Document type">
           <option value="supporting_document">Supporting document</option>
           <option value="rra_certificate">RRA certificate</option>
           <option value="revenue_document">Revenue document</option>
