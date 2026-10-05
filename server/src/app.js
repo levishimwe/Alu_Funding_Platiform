@@ -1,0 +1,50 @@
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const env = require('./config/env');
+const { sequelize } = require('./config/database');
+const { notFoundHandler, errorHandler } = require('./middleware/errors');
+const { loadUser } = require('./middleware/auth');
+
+const app = express();
+
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(cors({ origin: env.clientUrl, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
+
+// CSRF defence for the cookie-based session: state-changing requests must carry
+// a custom header, which a cross-site form post cannot set (plus SameSite=Lax).
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (req.get('X-Requested-With') !== 'fetch') {
+    return res.status(403).json({ error: 'Missing request header.' });
+  }
+  return next();
+});
+
+// Authenticated API responses must never be cached (NFR04).
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+app.get('/api/health', async (req, res) => {
+  let database = 'up';
+  try {
+    await sequelize.authenticate();
+  } catch {
+    database = 'down';
+  }
+  res.status(database === 'up' ? 200 : 503).json({ status: 'ok', database });
+});
+
+app.use('/api', loadUser);
+app.use('/api/auth', require('./routes/auth'));
+
+app.use('/api', notFoundHandler);
+app.use(errorHandler);
+
+module.exports = app;
