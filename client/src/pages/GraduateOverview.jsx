@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, FileCheck2, MailCheck, PlusCircle, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Alert, PageHeader, StatusPill } from '../components/ui';
+import { Alert, EmptyState, PageHeader, PageLoader, StatCard, StatusPill } from '../components/ui';
+import { ProjectsTable, useMyProjects } from './graduate/MyProjects';
 
 function Step({ done, current, icon: Icon, title, children }) {
   return (
@@ -92,11 +93,66 @@ export default function GraduateOverview() {
         </div>
       )}
 
-      {user.approved && (
-        <Alert type="success" title="Your graduate account is verified">
-          You can now submit ventures for review.
-        </Alert>
-      )}
+      {user.approved && <ApprovedOverview />}
     </>
+  );
+}
+
+function ApprovedOverview() {
+  const { projects, error } = useMyProjects();
+  if (error) return <Alert type="error">{error}</Alert>;
+  if (!projects) return <PageLoader />;
+
+  const count = (...statuses) => projects.filter((p) => statuses.includes(p.status)).length;
+  const attention = projects.filter(
+    (p) => p.status === 'revision_required' || (p.status === 'similarity_flagged' && !p.clarificationSubmittedAt)
+  );
+
+  return (
+    <div className="space-y-6">
+      {attention.map((p) => (
+        <Alert
+          key={p.id}
+          type="warning"
+          title={p.status === 'revision_required' ? 'Revision requested' : 'Clarification needed'}
+          action={
+            <Link to={`/app/projects/${p.id}`} className="btn-primary">
+              Respond
+            </Link>
+          }
+        >
+          {p.title} ({p.projectCode})
+        </Alert>
+      ))}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Projects submitted" value={projects.length} />
+        <StatCard label="In review" value={count('pending_review', 'similarity_flagged', 'revision_required')} tone="amber" />
+        <StatCard label="Approved & seeking investment" value={count('approved')} tone="green" />
+        <StatCard label="Funded / investor limit" value={count('funded', 'investor_limit_reached')} tone="blue" />
+      </div>
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <h2 className="font-semibold">Registered ventures</h2>
+          <Link to="/app/projects" className="text-sm text-accent hover:underline">
+            View all
+          </Link>
+        </div>
+        {projects.length ? (
+          <ProjectsTable projects={projects.slice(0, 5)} />
+        ) : (
+          <EmptyState
+            icon={PlusCircle}
+            title="No projects yet"
+            action={
+              <Link to="/app/projects/new" className="btn-primary">
+                Submit your first project
+              </Link>
+            }
+          >
+            Your account is verified — submit a venture to get it reviewed and published.
+          </EmptyState>
+        )}
+      </div>
+    </div>
   );
 }

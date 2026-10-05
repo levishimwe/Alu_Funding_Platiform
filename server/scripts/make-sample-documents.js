@@ -56,7 +56,7 @@ const OTHER = [
   { text: 'Remember to pick up the laundry on Friday afternoon.', size: 13 },
 ];
 
-async function textPdf(lines, file) {
+async function textPdfBuffer(lines) {
   const doc = await PDFDocument.create();
   const page = doc.addPage([842, 595]); // A4 landscape
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -68,8 +68,15 @@ async function textPdf(lines, file) {
     page.drawText(line.text, { x: (842 - width) / 2, y, size: line.size, font, color: rgb(0.1, 0.12, 0.2) });
     y -= line.size + 18;
   }
-  fs.writeFileSync(path.join(OUT, file), await doc.save());
+  return Buffer.from(await doc.save());
 }
+
+async function textPdf(lines, file) {
+  fs.writeFileSync(path.join(OUT, file), await textPdfBuffer(lines));
+}
+
+// Used by tests to build certificates with unique company codes.
+const buildRdbPdf = (opts) => textPdfBuffer(RDB(opts));
 
 function png(lines) {
   const canvas = createCanvas(1684, 1190);
@@ -123,7 +130,11 @@ async function main() {
   for (const f of fs.readdirSync(OUT)) console.log('  ' + f);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+module.exports = { buildRdbPdf };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

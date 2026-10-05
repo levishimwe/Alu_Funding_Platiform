@@ -43,6 +43,9 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api', loadUser);
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/public', require('./routes/public'));
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api/documents', require('./routes/documents'));
 
 app.use('/api', notFoundHandler);
 app.use(errorHandler);

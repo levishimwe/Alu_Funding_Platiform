@@ -5,7 +5,8 @@ export class ApiError extends Error {
     super(body?.error || 'Something went wrong. Please try again.');
     this.status = status;
     this.fields = body?.fields || {};
-    this.details = body?.details;
+    // Some responses (e.g. SIMILARITY_WARNING) carry their data at the top level.
+    this.details = body?.details ?? (body?.code ? body : undefined);
   }
 }
 

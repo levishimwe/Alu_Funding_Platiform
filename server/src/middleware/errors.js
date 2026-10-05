@@ -34,7 +34,12 @@ function errorHandler(err, req, res, next) {
     return res.status(400).json({ error: message });
   }
   if (err instanceof HttpError) {
-    return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
+    const { fields, ...details } = err.details || {};
+    return res.status(err.status).json({
+      error: err.message,
+      ...(fields ? { fields } : {}),
+      ...(Object.keys(details).length ? { details } : {}),
+    });
   }
   if (err.name === 'SequelizeUniqueConstraintError') {
     return res.status(409).json({ error: 'A record with these details already exists.' });
