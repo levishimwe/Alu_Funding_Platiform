@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // Same-origin API in development so the HttpOnly session cookie just works.
-    proxy: { '/api': 'http://localhost:4000' },
+    // API_PROXY lets an isolated test API run alongside the normal one.
+    proxy: { '/api': process.env.API_PROXY || 'http://localhost:4000' },
   },
 });

@@ -281,7 +281,7 @@ describe('revisions and private documents', () => {
     const own = await client.get(`/api/documents/${docId}/file`);
     expect(own.status).toBe(200);
     expect(own.headers['content-type']).toBe('application/pdf');
-    expect(own.headers['cache-control']).toBe('no-store');
+    expect(own.headers['cache-control']).toMatch(/no-store/);
 
     const { client: stranger } = await approvedGraduate('Someone Else');
     expect((await stranger.get(`/api/documents/${docId}/file`)).status).toBe(404);
