@@ -179,17 +179,29 @@ async function auditTrail({ opportunityIds, applicationIds, limit }) {
   if (!where[Op.or].length) return [];
   const rows = await AuditLog.findAll({
     where,
-    include: [{ model: User, as: 'actor', attributes: ['fullName', 'role'] }],
+    include: [{ model: User, as: 'actor', attributes: ['fullName', 'role', 'email'] }],
     order: [['id', 'DESC']],
     limit,
   });
+  // Name the subject of each entry: the applicant for applications, the title for opportunities.
+  const appIds = rows.filter((r) => r.entityType === 'application').map((r) => r.entityId);
+  const oppIds = rows.filter((r) => r.entityType === 'opportunity').map((r) => r.entityId);
+  const [apps, opps] = await Promise.all([
+    appIds.length
+      ? Application.findAll({ where: { id: appIds }, attributes: ['id'], include: [{ model: User, as: 'applicant', attributes: ['fullName'] }] })
+      : [],
+    oppIds.length ? Opportunity.findAll({ where: { id: oppIds }, attributes: ['id', 'title'] }) : [],
+  ]);
+  const applicantOf = Object.fromEntries(apps.map((a) => [a.id, a.applicant?.fullName]));
+  const titleOf = Object.fromEntries(opps.map((o) => [o.id, o.title]));
   return rows.map((r) => ({
     id: r.id,
     action: r.action,
     entityType: r.entityType,
     entityId: r.entityId,
+    subject: r.entityType === 'application' ? applicantOf[r.entityId] || null : titleOf[r.entityId] || null,
     reason: r.reason,
-    actor: r.actor ? { name: r.actor.fullName, role: r.actor.role } : null,
+    actor: r.actor ? { name: r.actor.fullName, role: r.actor.role, email: r.actor.email } : null,
     notified: r.metadata?.notified ?? null,
     at: r.createdAt,
   }));

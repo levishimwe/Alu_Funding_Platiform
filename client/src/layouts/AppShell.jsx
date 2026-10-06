@@ -70,10 +70,10 @@ const NAV = {
   ],
   staff: [
     {
-      section: 'ALU Staff',
+      section: 'Workspace console',
       items: [
-        { to: '/app/staff', label: 'Opportunities', icon: Briefcase, end: true },
-        { to: '/app/staff/new', label: 'Propose Opportunity', icon: PlusCircle },
+        { to: '/app/staff', label: 'Hackathons & Opportunities', icon: Trophy, end: true },
+        { to: '/app/staff/selection', label: 'Staff Selection', icon: Briefcase },
       ],
     },
   ],

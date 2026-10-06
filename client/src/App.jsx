@@ -18,7 +18,7 @@ import ProjectQueue from './pages/admin/ProjectQueue';
 import AdminProjectDetail from './pages/admin/AdminProjectDetail';
 import AdminOpportunities from './pages/admin/AdminOpportunities';
 import { Outbox, RulesConfig } from './pages/admin/PlatformAdmin';
-import StaffOpportunities, { StaffOpportunityForm } from './pages/staff/StaffOpportunities';
+import StaffOpportunities, { StaffOpportunityForm, StaffSelectionHome } from './pages/staff/StaffOpportunities';
 import StaffSelection from './pages/staff/StaffSelection';
 
 function NotFound() {
@@ -78,6 +78,7 @@ export default function App() {
             <Route path="staff" element={<RequireAuth roles={['staff']} />}>
               <Route index element={<StaffOpportunities />} />
               <Route path="new" element={<StaffOpportunityForm />} />
+              <Route path="selection" element={<StaffSelectionHome />} />
               <Route path=":id" element={<StaffSelection />} />
               <Route path=":id/edit" element={<StaffOpportunityForm />} />
             </Route>
