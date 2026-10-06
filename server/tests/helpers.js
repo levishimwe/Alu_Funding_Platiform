@@ -48,4 +48,48 @@ async function approveGraduateDirectly(email) {
   return user;
 }
 
-module.exports = { agent, latestCode, registerGraduate, verifyEmail, approveGraduateDirectly, sample, unique };
+async function approvedGraduate(fullName = 'Amina Uwase') {
+  const client = agent();
+  const { email } = await registerGraduate(client, { fullName });
+  await verifyEmail(client, email);
+  const user = await approveGraduateDirectly(email);
+  return { client, email, user };
+}
+
+async function investorClient({ approved = true } = {}) {
+  const client = agent();
+  const email = `investor${unique()}@example.com`;
+  await client.post('/api/auth/register/investor').send({
+    fullName: 'Grace Mutoni',
+    email,
+    password: 'Password123',
+    organisation: 'Kigali Angels',
+    sectors: ['Agriculture'],
+  });
+  await verifyEmail(client, email);
+  const user = await User.findOne({ where: { email } });
+  if (approved) await user.update({ status: 'active' });
+  return { client, email, user };
+}
+
+// Signs in as one of the throwaway seeded accounts (tests/setupEnv.js).
+async function loginAs(key) {
+  const { TEST_ACCOUNTS } = require('./setupEnv');
+  const client = agent();
+  const res = await client.post('/api/auth/login').send(TEST_ACCOUNTS[key]);
+  if (res.status !== 200) throw new Error(`Login as ${key} failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return client;
+}
+
+module.exports = {
+  agent,
+  latestCode,
+  registerGraduate,
+  verifyEmail,
+  approveGraduateDirectly,
+  approvedGraduate,
+  investorClient,
+  loginAs,
+  sample,
+  unique,
+};
