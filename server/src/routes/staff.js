@@ -5,7 +5,7 @@ const express = require('express');
 const { Op } = require('sequelize');
 const { z } = require('zod');
 const env = require('../config/env');
-const { sequelize, User, GraduateProfile, Opportunity, Application, Project } = require('../models');
+const { sequelize, User, GraduateProfile, Opportunity, Application, Project, AuditLog } = require('../models');
 const { requireRole } = require('../middleware/auth');
 const { badRequest, forbidden, notFound } = require('../middleware/errors');
 const { opportunitySchema, serializeOpportunity, checkEligibility } = require('../services/opportunities');
@@ -124,6 +124,8 @@ router.post('/applications/:id/decision', async (req, res) => {
     .object({
       decision: z.enum(['shortlisted', 'selected', 'not_selected'], { message: 'Choose a decision.' }),
       note: z.string().trim().min(5, 'Give a reason for this decision (at least 5 characters).').max(2000),
+      // Staff may record a decision now and notify later; the default is to notify.
+      notify: z.boolean().default(true),
     })
     .parse(req.body || {});
   const application = await Application.findByPk(req.params.id, {
@@ -149,12 +151,13 @@ router.post('/applications/:id/decision', async (req, res) => {
         entityType: 'application',
         entityId: application.id,
         reason: data.note,
-        metadata: { opportunityId: application.opportunityId, projectId: application.projectId },
+        metadata: { opportunityId: application.opportunityId, projectId: application.projectId, notified: data.notify },
       },
       { transaction }
     );
   });
 
+  if (!data.notify) return res.json({ ok: true, status: data.decision, notified: false });
   const mail = DECISION_EMAIL[data.decision](application.opportunity, application);
   await enqueueEmail({
     eventKey: `application-${data.decision}:${application.id}:${application.applicant.id}`,
@@ -165,7 +168,49 @@ router.post('/applications/:id/decision', async (req, res) => {
     paragraphs: [`Hello ${application.applicant.fullName},`, ...mail.paragraphs],
     cta: { label: 'View your applications', url: `${env.clientUrl}/app/opportunities` },
   });
-  res.json({ ok: true, status: data.decision });
+  res.json({ ok: true, status: data.decision, notified: true });
+});
+
+// Audit entries for an opportunity and its applications (FR10), newest first.
+async function auditTrail({ opportunityIds, applicationIds, limit }) {
+  const where = { [Op.or]: [] };
+  if (opportunityIds?.length) where[Op.or].push({ entityType: 'opportunity', entityId: opportunityIds });
+  if (applicationIds?.length) where[Op.or].push({ entityType: 'application', entityId: applicationIds });
+  if (!where[Op.or].length) return [];
+  const rows = await AuditLog.findAll({
+    where,
+    include: [{ model: User, as: 'actor', attributes: ['fullName', 'role'] }],
+    order: [['id', 'DESC']],
+    limit,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    action: r.action,
+    entityType: r.entityType,
+    entityId: r.entityId,
+    reason: r.reason,
+    actor: r.actor ? { name: r.actor.fullName, role: r.actor.role } : null,
+    notified: r.metadata?.notified ?? null,
+    at: r.createdAt,
+  }));
+}
+
+router.get('/opportunities/:id/audit', async (req, res) => {
+  const opportunity = await Opportunity.findByPk(req.params.id, { attributes: ['id'] });
+  if (!opportunity) throw notFound('Opportunity not found.');
+  const applications = await Application.findAll({ where: { opportunityId: opportunity.id }, attributes: ['id'] });
+  res.json({ entries: await auditTrail({ opportunityIds: [opportunity.id], applicationIds: applications.map((a) => a.id), limit: 30 }) });
+});
+
+// Recent opportunity and selection activity across the platform.
+router.get('/activity', async (req, res) => {
+  const [opportunities, applications] = await Promise.all([
+    Opportunity.findAll({ attributes: ['id'] }),
+    Application.findAll({ attributes: ['id'] }),
+  ]);
+  res.json({
+    entries: await auditTrail({ opportunityIds: opportunities.map((o) => o.id), applicationIds: applications.map((a) => a.id), limit: 8 }),
+  });
 });
 
 module.exports = router;
