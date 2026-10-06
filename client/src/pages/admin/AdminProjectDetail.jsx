@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, FileText, History, TriangleAlert, Users } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Alert, PageHeader, PageLoader, Pill, StatusPill, formatDate } from '../../components/ui';
-import VerificationChecks from '../../components/VerificationChecks';
+import VerificationChecks, { adminFileUrl } from '../../components/VerificationChecks';
+import DocumentViewer from '../../components/DocumentViewer';
 import ReasonDialog from '../../components/ReasonDialog';
 import { ARCHIVE_NOTICE, availableActions } from '../../lib/projectActions';
 
@@ -20,6 +21,7 @@ export default function AdminProjectDetail() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [dialog, setDialog] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   const load = useCallback(
     () =>
@@ -199,12 +201,22 @@ export default function AdminProjectDetail() {
             ) : (
               <ul className="mt-3 space-y-2">
                 {otherDocs.map((d) => (
-                  <li key={d.id} className="flex items-center gap-2 text-sm">
-                    <FileText className="h-4 w-4 text-muted" aria-hidden="true" />
-                    <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="min-w-0 truncate text-accent hover:underline">
-                      {d.originalName}
-                    </a>
-                    <span className="ml-auto shrink-0 text-xs text-muted">{KIND_LABEL[d.kind]}</span>
+                  <li key={d.id} className="text-sm">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 text-left"
+                      onClick={() => setPreview(preview === d.id ? null : d.id)}
+                      aria-expanded={preview === d.id}
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
+                      <span className="min-w-0 truncate text-accent hover:underline">{d.originalName}</span>
+                      <span className="ml-auto shrink-0 text-xs text-muted">{KIND_LABEL[d.kind]}</span>
+                    </button>
+                    {preview === d.id && (
+                      <div className="mt-2">
+                        <DocumentViewer src={adminFileUrl(d.id)} mimeType={d.mimeType} name={d.originalName} height="h-80" />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

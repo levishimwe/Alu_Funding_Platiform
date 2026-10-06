@@ -28,6 +28,7 @@ const { getDashboardStats } = require('../services/dashboard');
 const { opportunitySchema, serializeOpportunity } = require('../services/opportunities');
 const { documentSummary } = require('../services/projectView');
 const audit = require('../services/audit');
+const { sendStoredFile } = require('../services/fileDelivery');
 
 const router = express.Router();
 router.use(requireRole('admin'));
@@ -58,6 +59,26 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Private files for review. Admin-only (router-level role check); there is no
+// public URL. Viewing evidence is audit-logged.
+router.get('/documents/:id/file', async (req, res) => {
+  const document = await Document.findByPk(req.params.id);
+  if (!document) throw notFound('Document not found.');
+  await audit.record({ actorId: req.user.id, action: 'document.viewed', entityType: 'document', entityId: document.id });
+  await sendStoredFile(res, { storageKey: document.storageKey, mimeType: document.mimeType, filename: document.originalName });
+});
+
+router.get('/users/:id/photo', async (req, res) => {
+  const user = await User.findByPk(req.params.id, { attributes: ['id', 'photoKey'] });
+  if (!user?.photoKey) throw notFound('No profile photo.');
+  await sendStoredFile(res, {
+    storageKey: user.photoKey,
+    mimeType: user.photoKey.endsWith('.png') ? 'image/png' : 'image/jpeg',
+    filename: 'profile-photo',
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Account approval queues (FR02, FR03)
 const ACCOUNT_FILTERS = {
   pending: { status: 'pending_review' },
@@ -81,6 +102,8 @@ router.get('/graduates', async (req, res) => {
       id: u.id,
       fullName: u.fullName,
       email: u.email,
+      phone: u.phone,
+      hasPhoto: Boolean(u.photoKey),
       status: u.status,
       registeredAt: u.createdAt,
       cohortYear: u.graduateProfile?.cohortYear,
@@ -103,6 +126,8 @@ router.get('/investors', async (req, res) => {
       id: u.id,
       fullName: u.fullName,
       email: u.email,
+      phone: u.phone,
+      hasPhoto: Boolean(u.photoKey),
       status: u.status,
       registeredAt: u.createdAt,
       investorType: u.investorProfile?.investorType,
