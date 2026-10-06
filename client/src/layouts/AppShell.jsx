@@ -24,6 +24,7 @@ import {
 import Logo from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
 import { Pill } from '../components/ui';
+import Avatar from '../components/Avatar';
 
 const NAV = {
   graduate: [
@@ -175,12 +176,7 @@ export default function AppShell() {
             </Pill>
           )}
           <div className="flex items-center gap-2">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-alu-navy text-xs font-semibold text-white"
-              aria-hidden="true"
-            >
-              {initials(user.fullName)}
-            </div>
+            <Avatar name={user.fullName} src={user.hasPhoto ? '/api/account/photo' : null} />
             <div className="hidden leading-tight md:block">
               <p className="text-sm font-medium">{user.fullName}</p>
               <p className="text-xs text-muted">{ROLE_LABEL[user.role]}</p>

@@ -4,7 +4,7 @@ const { z } = require('zod');
 const env = require('../config/env');
 const { sequelize, User, GraduateProfile, InvestorProfile, Document } = require('../models');
 const { badRequest, conflict, HttpError } = require('../middleware/errors');
-const { upload, validateDocument } = require('../middleware/upload');
+const { upload, validateDocument, validatePhoto } = require('../middleware/upload');
 const { loginLimiter, codeLimiter, uploadLimiter } = require('../middleware/rateLimits');
 const {
   setSessionCookie,
@@ -38,12 +38,44 @@ const fullName = z.string().trim().min(3, 'Enter your full name as it appears on
 
 const isAlumniEmail = (address) => env.alumniDomains.includes(address.split('@')[1]);
 
+// Optional (FR02 allows OTP "by email or SMS"; FR12 an "approved phone number").
+// Stored as +<digits>; Rwandan numbers may be entered as 07XXXXXXXX.
+const phone = z
+  .string()
+  .trim()
+  .max(25)
+  .optional()
+  .or(z.literal(''))
+  .transform((v) => {
+    if (!v) return null;
+    const digits = v.replace(/[\s()-]/g, '');
+    if (/^07\d{8}$/.test(digits)) return `+250${digits.slice(1)}`;
+    return digits;
+  })
+  .refine((v) => v === null || /^\+?[1-9]\d{7,14}$/.test(v), { message: 'Enter a valid phone number, e.g. +250 78 123 4567.' })
+  .transform((v) => (v && !v.startsWith('+') ? `+${v}` : v));
+
+// Multipart forms send lists as JSON text or repeated fields.
+const listField = (schema) =>
+  z.preprocess((v) => {
+    if (typeof v !== 'string') return v;
+    if (v.trim().startsWith('[')) {
+      try {
+        return JSON.parse(v);
+      } catch {
+        return v;
+      }
+    }
+    return v ? [v] : [];
+  }, schema);
+
 const graduateSchema = z.object({
   fullName,
   email: email.refine(isAlumniEmail, {
     message: `Use your official ALU email address (@${env.alumniDomains.join(' or @')}).`,
   }),
   password,
+  phone,
   cohortYear: z.coerce.number().int().min(2015, 'Enter a valid graduation year.').max(new Date().getFullYear() + 1),
   program: z.string().trim().min(2, 'Enter your degree programme.').max(150),
 });
@@ -52,6 +84,7 @@ const investorSchema = z.object({
   fullName,
   email,
   password,
+  phone,
   investorType: z.enum(['investor', 'sponsor']).default('investor'),
   organisation: z.string().trim().min(2, 'Enter your organisation.').max(150),
   website: z
@@ -61,7 +94,7 @@ const investorSchema = z.object({
     .url('Enter a full website address, e.g. https://example.com')
     .optional()
     .or(z.literal('')),
-  sectors: z.array(z.string().trim().max(80)).max(15).default([]),
+  sectors: listField(z.array(z.string().trim().max(80)).max(15).default([])),
   bio: z.string().trim().max(2000).optional().or(z.literal('')),
 });
 
@@ -73,6 +106,8 @@ function serializeUser(user) {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    phone: user.phone,
+    hasPhoto: Boolean(user.photoKey),
     role: user.role,
     status: user.status,
     theme: user.theme,
@@ -141,21 +176,41 @@ async function ensureEmailAvailable(address) {
 }
 
 // --- Registration ---
+const graduateUpload = upload.fields([
+  { name: 'degreeCertificate', maxCount: 1 },
+  { name: 'profilePhoto', maxCount: 1 },
+]);
+
+// Stores an optional profile photo; returns its storage key or null.
+async function storePhoto(file) {
+  const photo = await validatePhoto(file);
+  return photo ? storage.put(photo.buffer, { prefix: 'profile-photos', mimeType: photo.mimeType }) : null;
+}
+
 // FR02: alumni-domain email + OTP + degree upload; an administrator approves.
-router.post('/register/graduate', uploadLimiter, upload.single('degreeCertificate'), async (req, res) => {
+router.post('/register/graduate', uploadLimiter, graduateUpload, async (req, res) => {
   const data = graduateSchema.parse(req.body);
   await ensureEmailAvailable(data.email);
-  const file = await validateDocument(req.file, 'Your ALU degree certificate');
+  const file = await validateDocument(req.files?.degreeCertificate?.[0], 'Your ALU degree certificate');
+  // Validate the photo before storing anything.
+  await validatePhoto(req.files?.profilePhoto?.[0]);
 
-  const storageKey = await storage.put(file.buffer, { prefix: 'degree-certificates', mimeType: file.mimeType });
+  const stored = [];
   let user;
   let document;
   try {
+    const storageKey = await storage.put(file.buffer, { prefix: 'degree-certificates', mimeType: file.mimeType });
+    stored.push(storageKey);
+    const photoKey = await storePhoto(req.files?.profilePhoto?.[0]);
+    if (photoKey) stored.push(photoKey);
+
     await sequelize.transaction(async (transaction) => {
       user = await User.create(
         {
           email: data.email,
           fullName: data.fullName,
+          phone: data.phone,
+          photoKey,
           role: 'graduate',
           status: 'pending_email',
           passwordHash: await bcrypt.hash(data.password, 12),
@@ -179,12 +234,12 @@ router.post('/register/graduate', uploadLimiter, upload.single('degreeCertificat
         { transaction }
       );
       await audit.record(
-        { actorId: user.id, action: 'account.registered', entityType: 'user', entityId: user.id, metadata: { role: 'graduate' } },
+        { actorId: user.id, action: 'account.registered', entityType: 'user', entityId: user.id, metadata: { role: 'graduate', photo: Boolean(photoKey) } },
         { transaction }
       );
     });
   } catch (err) {
-    await storage.remove(storageKey).catch(() => {});
+    await Promise.all(stored.map((key) => storage.remove(key).catch(() => {})));
     throw err;
   }
 
@@ -194,37 +249,45 @@ router.post('/register/graduate', uploadLimiter, upload.single('degreeCertificat
 });
 
 // FR03: investor or sponsor identity, organisation, website and interests for review.
-router.post('/register/investor', async (req, res) => {
+router.post('/register/investor', uploadLimiter, upload.single('profilePhoto'), async (req, res) => {
   const data = investorSchema.parse(req.body);
   await ensureEmailAvailable(data.email);
+  const photoKey = await storePhoto(req.file);
   let user;
-  await sequelize.transaction(async (transaction) => {
-    user = await User.create(
-      {
-        email: data.email,
-        fullName: data.fullName,
-        role: 'investor',
-        status: 'pending_email',
-        passwordHash: await bcrypt.hash(data.password, 12),
-      },
-      { transaction }
-    );
-    await InvestorProfile.create(
-      {
-        userId: user.id,
-        investorType: data.investorType,
-        organisation: data.organisation,
-        website: data.website || null,
-        sectors: data.sectors,
-        bio: data.bio || null,
-      },
-      { transaction }
-    );
-    await audit.record(
-      { actorId: user.id, action: 'account.registered', entityType: 'user', entityId: user.id, metadata: { role: 'investor' } },
-      { transaction }
-    );
-  });
+  try {
+    await sequelize.transaction(async (transaction) => {
+      user = await User.create(
+        {
+          email: data.email,
+          fullName: data.fullName,
+          phone: data.phone,
+          photoKey,
+          role: 'investor',
+          status: 'pending_email',
+          passwordHash: await bcrypt.hash(data.password, 12),
+        },
+        { transaction }
+      );
+      await InvestorProfile.create(
+        {
+          userId: user.id,
+          investorType: data.investorType,
+          organisation: data.organisation,
+          website: data.website || null,
+          sectors: data.sectors,
+          bio: data.bio || null,
+        },
+        { transaction }
+      );
+      await audit.record(
+        { actorId: user.id, action: 'account.registered', entityType: 'user', entityId: user.id, metadata: { role: 'investor', photo: Boolean(photoKey) } },
+        { transaction }
+      );
+    });
+  } catch (err) {
+    if (photoKey) await storage.remove(photoKey).catch(() => {});
+    throw err;
+  }
   await sendVerificationCode(user);
   res.status(201).json({ message: 'Account created. Check your email for a verification code.', email: user.email });
 });

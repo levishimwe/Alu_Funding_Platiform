@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { Alert, EmptyState, PageHeader, PageLoader, Pill, StatusPill, formatDate } from '../../components/ui';
 import VerificationChecks from '../../components/VerificationChecks';
 import ReasonDialog from '../../components/ReasonDialog';
+import Avatar from '../../components/Avatar';
 
 const TABS = [
   ['pending', 'Pending review'],
@@ -95,11 +96,13 @@ export default function AccountQueue({ role }) {
                     onClick={() => setOpen(expanded ? null : row.id)}
                     aria-expanded={expanded}
                   >
-                    {expanded ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />}
+                    {expanded ? <ChevronDown className="mt-2.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-2.5 h-4 w-4 shrink-0" />}
+                    <Avatar name={row.fullName} src={row.hasPhoto ? `/api/admin/users/${row.id}/photo` : null} size="md" />
                     <span className="min-w-0">
                       <span className="block font-medium">{row.fullName}</span>
                       <span className="block truncate text-xs text-muted">
-                        {row.email} · registered {formatDate(row.registeredAt)}
+                        {row.email}
+                        {row.phone && ` · ${row.phone}`} · registered {formatDate(row.registeredAt)}
                       </span>
                     </span>
                   </button>
@@ -131,7 +134,7 @@ export default function AccountQueue({ role }) {
                 {expanded && (
                   <div className="border-t border-line bg-canvas p-4">
                     {role === 'graduate' ? (
-                      <VerificationChecks document={row.degree} title="ALU degree certificate" />
+                      <VerificationChecks document={row.degree} title={`ALU degree certificate — registered as “${row.fullName}”`} />
                     ) : (
                       <dl className="grid gap-3 text-sm sm:grid-cols-2">
                         <div>

@@ -155,10 +155,70 @@ export function SignIn() {
   );
 }
 
+// Optional phone (FR02 allows SMS codes) and optional profile photo
+// (JPEG or PNG, 5 MB; the server checks the actual file content).
+const PHOTO_MAX = 5 * 1024 * 1024;
+function PhoneAndPhoto({ f, prefix }) {
+  const [preview, setPreview] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
+
+  const pick = (file) => {
+    setPhotoError('');
+    if (!file) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type)) return setPhotoError('Choose a JPEG or PNG image.');
+    if (file.size > PHOTO_MAX) return setPhotoError('The photo must be 5 MB or smaller.');
+    f.set('photo')(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <DarkField id={`${prefix}-phone`} label="Phone number (optional)" error={f.errors.phone} help="e.g. +250 78 123 4567">
+        <input id={`${prefix}-phone`} type="tel" autoComplete="tel" className={darkInput} value={f.values.phone} onChange={f.set('phone')} />
+      </DarkField>
+      <DarkField id={`${prefix}-photo`} label="Profile photo (optional)" error={photoError || f.errors.profilePhoto} help="JPEG or PNG, up to 5 MB.">
+        <div className="flex items-center gap-3">
+          {preview ? (
+            <img src={preview} alt="Selected profile photo" className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-white/20" />
+          ) : (
+            <span className="h-10 w-10 shrink-0 rounded-full bg-white/10" aria-hidden="true" />
+          )}
+          <label htmlFor={`${prefix}-photo`} className="cursor-pointer rounded-md border border-white/15 px-3 py-2 text-sm text-[#c9d1d9] hover:border-[#58a6ff]">
+            {f.values.photo ? 'Change photo' : 'Choose photo'}
+          </label>
+          {f.values.photo && (
+            <button
+              type="button"
+              className="text-xs text-[#9198a1] hover:text-white"
+              onClick={() => {
+                f.set('photo')(null);
+                setPreview(null);
+              }}
+            >
+              Remove
+            </button>
+          )}
+          <input
+            id={`${prefix}-photo`}
+            type="file"
+            accept="image/jpeg,image/png"
+            className="sr-only"
+            onChange={(e) => {
+              pick(e.target.files?.[0] || null);
+              e.target.value = '';
+            }}
+          />
+        </div>
+      </DarkField>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 function GraduateForm() {
   const navigate = useNavigate();
-  const f = useFormState({ fullName: '', email: '', password: '', cohortYear: '', program: '', file: null });
+  const f = useFormState({ fullName: '', email: '', password: '', phone: '', cohortYear: '', program: '', file: null, photo: null });
 
   const submit = (e) => {
     e.preventDefault();
@@ -185,6 +245,7 @@ function GraduateForm() {
       <DarkField id="g-password" label="Password" error={f.errors.password} help="At least 8 characters, including a letter and a number.">
         <input id="g-password" type="password" className={darkInput} autoComplete="new-password" value={f.values.password} onChange={f.set('password')} />
       </DarkField>
+      <PhoneAndPhoto f={f} prefix="g" />
       <div className="grid gap-4 sm:grid-cols-2">
         <DarkField id="g-year" label="Graduation year" error={f.errors.cohortYear}>
           <select id="g-year" className={darkInput} value={f.values.cohortYear} onChange={f.set('cohortYear')}>
@@ -253,7 +314,13 @@ function InvestorForm() {
   const submit = (e) => {
     e.preventDefault();
     f.run(async () => {
-      const res = await api.post('/auth/register/investor', f.values);
+      const data = new FormData();
+      Object.entries(f.values).forEach(([k, v]) => {
+        if (k === 'photo') return;
+        data.append(k, k === 'sectors' ? JSON.stringify(v) : v);
+      });
+      if (f.values.photo) data.append('profilePhoto', f.values.photo);
+      const res = await api.upload('/auth/register/investor', data);
       navigate(`/verify-email?email=${encodeURIComponent(res.email)}`);
     });
   };
@@ -304,6 +371,7 @@ function InvestorForm() {
       <DarkField id="i-password" label="Password" error={f.errors.password} help="At least 8 characters, including a letter and a number.">
         <input id="i-password" type="password" className={darkInput} autoComplete="new-password" value={f.values.password} onChange={f.set('password')} />
       </DarkField>
+      <PhoneAndPhoto f={f} prefix="i" />
       <fieldset>
         <legend className={darkLabel}>Sectors of interest</legend>
         <div className="flex flex-wrap gap-2">

@@ -45,4 +45,30 @@ async function validateDocument(file, label) {
   };
 }
 
-module.exports = { upload, validateDocument, sniffMimeType, MAX_BYTES };
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_PHOTO_PIXELS = 6000;
+
+/**
+ * Profile photos: JPEG or PNG only, 5 MB max, judged by content. The image is
+ * also decoded, so a renamed or corrupt file is rejected even if its first
+ * bytes look right.
+ */
+async function validatePhoto(file, label = 'Profile photo') {
+  if (!file) return null;
+  const mimeType = sniffMimeType(file.buffer);
+  if (!['image/jpeg', 'image/png'].includes(mimeType)) throw badRequest(`${label} must be a JPEG or PNG image.`);
+  if (file.size > MAX_PHOTO_BYTES) throw badRequest(`${label} must be 5 MB or smaller.`);
+  let image;
+  try {
+    const { loadImage } = require('@napi-rs/canvas');
+    image = await loadImage(file.buffer);
+  } catch {
+    throw badRequest(`${label} could not be read as an image.`);
+  }
+  if (image.width > MAX_PHOTO_PIXELS || image.height > MAX_PHOTO_PIXELS) {
+    throw badRequest(`${label} must be at most ${MAX_PHOTO_PIXELS} × ${MAX_PHOTO_PIXELS} pixels.`);
+  }
+  return { buffer: file.buffer, mimeType, size: file.size };
+}
+
+module.exports = { upload, validateDocument, validatePhoto, sniffMimeType, MAX_BYTES, MAX_PHOTO_BYTES };

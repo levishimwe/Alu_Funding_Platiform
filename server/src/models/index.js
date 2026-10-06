@@ -14,6 +14,7 @@ const User = sequelize.define(
     email: { type: DataTypes.STRING(254), allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING(255), allowNull: false, field: 'password_hash' },
     fullName: { type: DataTypes.STRING(150), allowNull: false, field: 'full_name' },
+    phone: { type: DataTypes.STRING(20) },
     role: { type: DataTypes.ENUM('graduate', 'investor', 'admin', 'staff'), allowNull: false },
     status: {
       type: DataTypes.ENUM('pending_email', 'pending_review', 'active', 'rejected', 'suspended'),
