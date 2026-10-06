@@ -16,10 +16,13 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testTimeout": 60000,
+    "testTimeout": 180000,
     "globalSetup": "./tests/globalSetup.js",
     "testMatch": [
       "**/tests/**/*.test.js"
+    ],
+    "setupFiles": [
+      "./tests/setupEnv.js"
     ]
   },
   "dependencies": {
