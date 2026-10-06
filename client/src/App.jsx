@@ -10,7 +10,16 @@ import GraduateOverview from './pages/GraduateOverview';
 import MyProjects from './pages/graduate/MyProjects';
 import ProjectForm from './pages/graduate/ProjectForm';
 import ProjectDetail from './pages/graduate/ProjectDetail';
-import { PublicProject, Ventures, VerifyProject } from './pages/public';
+import { PublicOpportunities, PublicProject, Ventures, VerifyProject } from './pages/public';
+import Opportunities from './pages/graduate/Opportunities';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AccountQueue from './pages/admin/AccountQueue';
+import ProjectQueue from './pages/admin/ProjectQueue';
+import AdminProjectDetail from './pages/admin/AdminProjectDetail';
+import AdminOpportunities from './pages/admin/AdminOpportunities';
+import { Outbox, RulesConfig } from './pages/admin/PlatformAdmin';
+import StaffOpportunities, { StaffOpportunityForm } from './pages/staff/StaffOpportunities';
+import StaffSelection from './pages/staff/StaffSelection';
 
 function NotFound() {
   return (
@@ -43,7 +52,7 @@ export default function App() {
             <Route path="ventures" element={<Ventures />} />
             <Route path="ventures/:code" element={<PublicProject />} />
             <Route path="verify" element={<VerifyProject />} />
-            <Route path="opportunities" element={<Upcoming title="Opportunities" />} />
+            <Route path="opportunities" element={<PublicOpportunities />} />
             <Route path="*" element={<NotFound />} />
           </Route>
 
@@ -54,6 +63,23 @@ export default function App() {
               <Route path="projects/new" element={<ProjectForm />} />
               <Route path="projects/:id" element={<ProjectDetail />} />
               <Route path="projects/:id/edit" element={<ProjectForm />} />
+              <Route path="opportunities" element={<Opportunities />} />
+            </Route>
+            <Route path="admin" element={<RequireAuth roles={['admin']} />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="graduates" element={<AccountQueue key="graduate" role="graduate" />} />
+              <Route path="investors" element={<AccountQueue key="investor" role="investor" />} />
+              <Route path="projects" element={<ProjectQueue />} />
+              <Route path="projects/:id" element={<AdminProjectDetail />} />
+              <Route path="opportunities" element={<AdminOpportunities />} />
+              <Route path="outbox" element={<Outbox />} />
+              <Route path="config" element={<RulesConfig />} />
+            </Route>
+            <Route path="staff" element={<RequireAuth roles={['staff']} />}>
+              <Route index element={<StaffOpportunities />} />
+              <Route path="new" element={<StaffOpportunityForm />} />
+              <Route path=":id" element={<StaffSelection />} />
+              <Route path=":id/edit" element={<StaffOpportunityForm />} />
             </Route>
             <Route path="*" element={<Upcoming title="Coming soon" />} />
           </Route>

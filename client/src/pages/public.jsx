@@ -261,6 +261,57 @@ export function Ventures() {
   );
 }
 
+// Public list of open opportunities; applying requires an approved account.
+export function PublicOpportunities() {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    document.title = 'Opportunities · ALU Ventures';
+    api
+      .get('/public/opportunities')
+      .then((d) => setRows(d.opportunities))
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <LightPage>
+      <h1 className="text-3xl font-semibold tracking-tight">Hackathons, grants & competitions</h1>
+      <p className="mt-2 text-sm text-muted">
+        Published by ALU staff. Verified graduates apply with an approved project from their dashboard.
+      </p>
+      <div className="mt-6 space-y-3">
+        {error && <Alert type="error">{error}</Alert>}
+        {!rows && !error && <PageLoader />}
+        {rows?.length === 0 && (
+          <div className="card">
+            <EmptyState icon={Search} title="No open opportunities right now">
+              Check back soon.
+            </EmptyState>
+          </div>
+        )}
+        {rows?.map((o) => (
+          <article key={o.id} className="card p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Pill tone="blue">{o.type}</Pill>
+              {o.prize && <Pill tone="green">{o.prize}</Pill>}
+              <span className="text-xs text-muted">Closes {formatDate(o.deadline, true)}</span>
+            </div>
+            <h2 className="mt-2 text-lg font-semibold">{o.title}</h2>
+            {o.organiser && <p className="text-xs text-muted">{o.organiser}</p>}
+            <p className="mt-2 text-sm">{o.description}</p>
+          </article>
+        ))}
+        <p className="pt-2 text-sm text-muted">
+          ALU graduate?{' '}
+          <Link to="/register" className="text-accent hover:underline">
+            Create your free account
+          </Link>{' '}
+          to apply.
+        </p>
+      </div>
+    </LightPage>
+  );
+}
+
 export function PublicProject() {
   const { code } = useParams();
   const [result, setResult] = useState(null);
