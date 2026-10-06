@@ -28,6 +28,7 @@ const projectSchema = z
     type: z.enum(['idea', 'company'], { message: 'Choose idea stage or registered company.' }),
     sector: z.string().trim().min(2, 'Confirm a sector.').max(80),
     stage: z.string().trim().min(2, 'Choose a stage.').max(60),
+    country: z.string().trim().min(2, 'Choose the primary operating country.').max(60).default('Rwanda'),
     summary: z.string().trim().min(20, 'Write a one or two sentence summary (20+ characters).').max(500),
     description: z.string().trim().min(80, 'Describe the venture in at least 80 characters.').max(6000),
     fundingSought: optionalText(120),
@@ -172,6 +173,8 @@ router.post('/', requireApprovedGraduate, uploadLimiter, uploadFields, async (re
             sector: data.sector,
             suggestedSector: suggestion.sector,
             stage: data.stage,
+          country: data.country,
+            country: data.country,
             summary: data.summary,
             description: data.description,
             fundingSought: data.fundingSought,
@@ -247,7 +250,18 @@ router.get('/mine', requireRole('graduate'), async (req, res) => {
 });
 
 router.get('/:id', requireRole('graduate'), async (req, res) => {
-  res.json({ project: ownerProject(await loadOwnedProject(req)) });
+  const project = ownerProject(await loadOwnedProject(req));
+  // For the clarification comparison: the matched project's summary is shown
+  // only when it is an approved, publication-consented record.
+  if (project.similarityMatches.length) {
+    const matched = await Project.findAll({
+      where: { projectCode: project.similarityMatches.map((m) => m.projectCode), publicationConsent: true },
+      attributes: ['projectCode', 'summary', 'status'],
+    });
+    const byCode = Object.fromEntries(matched.filter((m) => m.status !== 'archived').map((m) => [m.projectCode, m.summary]));
+    project.similarityMatches = project.similarityMatches.map((m) => ({ ...m, summary: byCode[m.projectCode] || null }));
+  }
+  res.json({ project });
 });
 
 // --- Revision (FR04: material changes trigger renewed review) ---
@@ -307,6 +321,7 @@ router.patch('/:id', requireApprovedGraduate, uploadLimiter, uploadFields, async
           sector: data.sector,
           suggestedSector: suggestion.sector,
           stage: data.stage,
+          country: data.country,
           summary: data.summary,
           description: data.description,
           fundingSought: data.fundingSought,
@@ -366,6 +381,7 @@ router.post('/:id/clarification', requireApprovedGraduate, uploadLimiter, clarif
   const data = z
     .object({
       clarification: z.string().trim().min(40, 'Explain the distinction in at least 40 characters.').max(4000),
+      declaration: bool.refine((v) => v === true, { message: 'Confirm the founder declaration before submitting.' }),
       documentKind: z.enum(['rra_certificate', 'supporting_document']).default('supporting_document'),
     })
     .parse(req.body);

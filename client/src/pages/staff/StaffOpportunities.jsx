@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, ExternalLink, FilePen, Globe, Inbox, Plus, Search, Send, Users } from 'lucide-react';
+import { ExternalLink, FilePen, Globe, Inbox, Plus, Search, Send, Users } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Alert, EmptyState, PageLoader, formatDate } from '../../components/ui';
 import OpportunityForm from '../../components/OpportunityForm';
 import AuditStrip from '../../components/AuditStrip';
+import { Breadcrumb, StatTile, initials } from '../../components/kit';
 
 // Category tag colours, as in the Figma table (GRANT / CHALLENGE / HACKATHON).
 const CATEGORY = {
@@ -28,50 +29,7 @@ const STATUS = {
 const PAGE_SIZE = 8;
 
 export const ref = (id) => `REF: OPP-${String(id).padStart(4, '0')}`;
-export const initials = (name = '') =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0].toUpperCase())
-    .join('') || '—';
-
-export function Breadcrumb({ items }) {
-  return (
-    <nav aria-label="Breadcrumb" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-muted">
-      {items.map(([label, to], i) => (
-        <span key={`${label}-${i}`} className="inline-flex items-center gap-1">
-          {i > 0 && <ChevronRight className="h-3 w-3" aria-hidden="true" />}
-          {to ? (
-            <Link to={to} className="hover:text-accent hover:underline">
-              {label}
-            </Link>
-          ) : (
-            <span className="font-medium text-ink">{label}</span>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
-}
-
-// Figma stat card: uppercase label, icon top-right, coloured status line.
-export function StatTile({ label, icon: Icon, value, unit, status, statusTone = 'text-muted', children }) {
-  return (
-    <div className="card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
-        {Icon && <Icon className="h-4 w-4 text-muted" aria-hidden="true" />}
-      </div>
-      <p className="mt-2 text-2xl font-semibold tabular-nums">
-        {value}
-        {unit && <span className="ml-1 text-xs font-normal text-muted">{unit}</span>}
-      </p>
-      {children}
-      {status && <p className={`mt-1 text-xs ${statusTone}`}>{status}</p>}
-    </div>
-  );
-}
+export { Breadcrumb, StatTile, initials };
 
 function StatusBadge({ status }) {
   const s = STATUS[status] || STATUS.closed;

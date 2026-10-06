@@ -12,6 +12,7 @@ import ProjectForm from './pages/graduate/ProjectForm';
 import ProjectDetail from './pages/graduate/ProjectDetail';
 import { PublicOpportunities, PublicProject, Ventures, VerifyProject } from './pages/public';
 import Opportunities from './pages/graduate/Opportunities';
+import Settings from './pages/Settings';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AccountQueue from './pages/admin/AccountQueue';
 import ProjectQueue from './pages/admin/ProjectQueue';
@@ -82,6 +83,8 @@ export default function App() {
               <Route path=":id" element={<StaffSelection />} />
               <Route path=":id/edit" element={<StaffOpportunityForm />} />
             </Route>
+            <Route path="settings" element={<Settings />} />
+            <Route path="settings/:section" element={<Settings />} />
             <Route path="*" element={<Upcoming title="Coming soon" />} />
           </Route>
         </Routes>

@@ -12,7 +12,6 @@ import {
   LogOut,
   Mail,
   Menu,
-  PlusCircle,
   Search,
   Settings,
   SlidersHorizontal,
@@ -26,42 +25,46 @@ import { useAuth } from '../context/AuthContext';
 import { Pill } from '../components/ui';
 import Avatar from '../components/Avatar';
 
+// Only real features for the signed-in role (no Figma placeholders such as
+// Admin Operations for graduates, Disbursements, Cap Table or tokens).
 const NAV = {
   graduate: [
     {
       section: 'Workspace',
       items: [
-        { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
-        { to: '/app/projects', label: 'My Projects', icon: FolderKanban, end: true },
-        { to: '/app/projects/new', label: 'Submit a Project', icon: PlusCircle },
+        { to: '/app', label: 'Graduate Dashboard', icon: LayoutDashboard, end: true },
+        { to: '/app/projects', label: 'My Projects', icon: FolderKanban },
+        { to: '/app/opportunities', label: 'Hackathons & Grants', icon: Trophy },
         { to: '/app/introductions', label: 'Investor Introductions', icon: Handshake },
-        { to: '/app/opportunities', label: 'Funding Opportunities', icon: Trophy },
       ],
     },
   ],
   investor: [
     {
-      section: 'Investor',
+      section: 'Explore',
       items: [
         { to: '/app/discover', label: 'Browse Projects', icon: Search },
         { to: '/app/introductions', label: 'My Introductions', icon: Handshake },
-        { to: '/app/billing', label: 'Billing & Premium', icon: CreditCard },
       ],
+    },
+    {
+      section: 'Account',
+      items: [{ to: '/app/billing', label: 'Billing & Premium Plans', icon: CreditCard }],
     },
   ],
   admin: [
     {
-      section: 'Administration',
+      section: 'Workspace',
       items: [
         { to: '/app/admin', label: 'Dashboard', icon: Gauge, end: true },
+        { to: '/app/admin/projects', label: 'Project Verification', icon: ClipboardCheck },
         { to: '/app/admin/graduates', label: 'Graduate Approvals', icon: UserCheck },
         { to: '/app/admin/investors', label: 'Investor Approvals', icon: Users },
-        { to: '/app/admin/projects', label: 'Project Verification', icon: ClipboardCheck },
-        { to: '/app/admin/opportunities', label: 'Opportunities', icon: Trophy },
+        { to: '/app/admin/opportunities', label: 'Hackathons & Grants', icon: Trophy },
       ],
     },
     {
-      section: 'Platform',
+      section: 'Management',
       items: [
         { to: '/app/admin/outbox', label: 'Email Outbox', icon: Mail },
         { to: '/app/admin/config', label: 'Rules & Thresholds', icon: SlidersHorizontal },
@@ -79,15 +82,25 @@ const NAV = {
   ],
 };
 
-const ROLE_LABEL = { graduate: 'Graduate', investor: 'Investor / Sponsor', admin: 'Administrator', staff: 'ALU Staff' };
+const ROLE_LABEL = { graduate: 'Graduate Founder', investor: 'Investor / Sponsor', admin: 'Administrator', staff: 'ALU Staff' };
 
-function initials(name = '') {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0].toUpperCase())
-    .join('');
+function NavItem({ to, label, icon: Icon, end }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+          isActive
+            ? 'bg-accent-soft font-semibold text-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-accent'
+            : 'text-ink hover:bg-subtle'
+        }`
+      }
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </NavLink>
+  );
 }
 
 export default function AppShell() {
@@ -98,50 +111,27 @@ export default function AppShell() {
 
   useEffect(() => setOpen(false), [location.pathname]);
 
-  const sections = NAV[user.role] || [];
+  const sections = [...(NAV[user.role] || []), { section: 'Settings', items: [{ to: '/app/settings', label: 'Account Settings', icon: Settings }] }];
   const signOut = async () => {
     await logout();
     navigate('/signin');
   };
 
   const sidebar = (
-    <nav className="flex h-full flex-col gap-6 p-3" aria-label="Dashboard">
+    <nav className="flex h-full flex-col gap-5 px-3 py-4" aria-label="Dashboard">
       {sections.map((section) => (
         <div key={section.section}>
-          <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted">{section.section}</p>
+          <p className="mb-1.5 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">{section.section}</p>
           <ul className="space-y-0.5">
-            {section.items.map(({ to, label, icon: Icon, end }) => (
-              <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                      isActive ? 'bg-accent-soft font-medium text-accent' : 'text-ink hover:bg-subtle'
-                    }`
-                  }
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {label}
-                </NavLink>
+            {section.items.map((item) => (
+              <li key={item.to}>
+                <NavItem {...item} />
               </li>
             ))}
           </ul>
         </div>
       ))}
-      <div>
-        <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted">Account</p>
-        <NavLink
-          to="/app/settings"
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${isActive ? 'bg-accent-soft font-medium text-accent' : 'text-ink hover:bg-subtle'}`
-          }
-        >
-          <Settings className="h-4 w-4" aria-hidden="true" />
-          Settings
-        </NavLink>
-      </div>
-      <div className="mt-auto rounded-md border border-line p-2 text-xs text-muted">
+      <div className="mt-auto rounded-md border border-line bg-subtle px-2.5 py-2 text-xs text-muted">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden="true" />
           All platform services are free
@@ -151,9 +141,9 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-surface px-3 sm:px-4">
-        <div className="flex items-center gap-2">
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center border-b border-line bg-surface">
+        <div className="flex h-full items-center gap-2 px-3 lg:w-60 lg:border-r lg:border-line">
           <button
             type="button"
             className="rounded-md p-2 text-muted hover:bg-subtle lg:hidden"
@@ -165,16 +155,17 @@ export default function AppShell() {
           </button>
           <Logo to="/" />
         </div>
-        <div className="flex items-center gap-3">
-          {user.approved ? (
-            <Pill tone="green" className="hidden sm:inline-flex">
-              <BadgeCheck className="h-3 w-3" aria-hidden="true" /> Verified {ROLE_LABEL[user.role]}
-            </Pill>
-          ) : (
-            <Pill tone="amber" className="hidden sm:inline-flex">
-              Pending review
-            </Pill>
-          )}
+        <div className="flex flex-1 items-center justify-end gap-3 px-3 sm:px-4">
+          <span className="hidden sm:block">
+            {user.approved ? (
+              <Pill tone="green">
+                <BadgeCheck className="h-3 w-3" aria-hidden="true" /> Verified {ROLE_LABEL[user.role]}
+              </Pill>
+            ) : (
+              <Pill tone="amber">Pending review</Pill>
+            )}
+          </span>
+          <span className="hidden h-6 w-px bg-line sm:block" aria-hidden="true" />
           <div className="flex items-center gap-2">
             <Avatar name={user.fullName} src={user.hasPhoto ? '/api/account/photo' : null} />
             <div className="hidden leading-tight md:block">
@@ -189,21 +180,24 @@ export default function AppShell() {
         </div>
       </header>
 
-      <div className="flex">
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-60 shrink-0 overflow-y-auto border-r border-line bg-surface lg:block">
-          {sidebar}
-        </aside>
+      <div className="flex flex-1">
+        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-60 shrink-0 overflow-y-auto border-r border-line bg-surface lg:block">{sidebar}</aside>
         {open && (
           <div className="fixed inset-0 top-14 z-20 lg:hidden">
             <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close navigation" onClick={() => setOpen(false)} />
             <aside className="relative h-full w-64 overflow-y-auto border-r border-line bg-surface">{sidebar}</aside>
           </div>
         )}
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">
-            <Outlet />
-          </div>
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-6xl">
+              <Outlet />
+            </div>
+          </main>
+          <footer className="border-t border-line bg-surface px-4 py-3 text-xs text-muted sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-6xl">© {new Date().getFullYear()} African Leadership University (ALU). All rights reserved.</div>
+          </footer>
+        </div>
       </div>
     </div>
   );

@@ -225,6 +225,22 @@ const PROJECT_FILTERS = [
   'archived',
 ];
 
+// Short reason for a failed RDB pre-check, shown under the flag in the queue.
+const ISSUE = {
+  name_match: 'Name mismatch',
+  registration_number_match: 'Registration number mismatch',
+  unexpired: 'Expired or no validity date',
+  registration_number: 'No registration number',
+  republic: 'Missing official markings',
+  rdb: 'Missing official markings',
+  text: 'Unreadable document',
+};
+function rdbIssue(doc) {
+  if (!doc || doc.flag !== 'suspicious') return null;
+  const failed = (doc.extractionJson?.checks || []).find((c) => !c.passed);
+  return failed ? ISSUE[failed.id] || failed.label : 'Needs review';
+}
+
 const latestRdb = (documents = []) =>
   documents.filter((d) => d.kind === 'rdb_certificate').sort((a, b) => b.id - a.id)[0] || null;
 
@@ -245,7 +261,7 @@ router.get('/projects', async (req, res) => {
       where,
       include: [
         { model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] },
-        { model: Document, as: 'documents', attributes: ['id', 'kind', 'flag', 'status'] },
+        { model: Document, as: 'documents', attributes: ['id', 'kind', 'flag', 'status', 'extractionJson'] },
       ],
       order: [['submittedAt', 'ASC']],
     }),
@@ -275,6 +291,8 @@ router.get('/projects', async (req, res) => {
         status: p.status,
         owner: p.owner && { id: p.owner.id, name: p.owner.fullName, email: p.owner.email },
         rdbFlag: p.type === 'company' ? rdb?.flag || (rdb ? 'processing' : null) : null,
+        rdbIssue: rdbIssue(rdb),
+        companyNumber: p.companyNumber,
         similarityStatus: p.similarityStatus,
         similarityScore: p.similarityScore ? Number(p.similarityScore) : null,
         confirmedInvestors: investorsByProject[p.id] || 0,

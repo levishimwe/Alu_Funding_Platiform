@@ -103,12 +103,9 @@ export default function OpportunityForm({ initial, submitLabel, onSubmit, onCanc
           </select>
         </Field>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Organiser" htmlFor="o-org" error={errors.organiser}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Organiser / sponsoring partner" htmlFor="o-org" error={errors.organiser}>
           <input id="o-org" className="input" value={v.organiser} onChange={set('organiser')} />
-        </Field>
-        <Field label="Prize / funding" htmlFor="o-prize" error={errors.prize}>
-          <input id="o-prize" className="input" value={v.prize} onChange={set('prize')} />
         </Field>
         <Field label="Deadline" htmlFor="o-deadline" required error={errors.deadline}>
           <input id="o-deadline" type="datetime-local" className="input" value={v.deadline} onChange={set('deadline')} />

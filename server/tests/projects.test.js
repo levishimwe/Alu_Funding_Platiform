@@ -234,10 +234,19 @@ describe('similarity detection and clarification (FR16)', () => {
     // Editing is blocked; clarification is the way forward and keeps it out of approval.
     const edit = await ownerB.patch(`/api/projects/${flagged.body.project.id}`).field('title', 'x');
     expect(edit.status).toBe(400);
+    const statement = 'Our stations serve fleet operators in Musanze, not Kigali, and we lease batteries monthly instead of per swap.';
+    // The founder declaration is required.
+    const undeclared = await ownerB.post(`/api/projects/${flagged.body.project.id}/clarification`).field('clarification', statement);
+    expect(undeclared.status).toBe(400);
+    expect(undeclared.body.fields.declaration).toBeDefined();
     const clarified = await ownerB
       .post(`/api/projects/${flagged.body.project.id}/clarification`)
-      .field('clarification', 'Our stations serve fleet operators in Musanze, not Kigali, and we lease batteries monthly instead of per swap.');
+      .field('clarification', statement)
+      .field('declaration', 'true');
     expect(clarified.status).toBe(200);
+    // The owner sees the matched project's summary for the comparison (it is approved and consented).
+    const detail = await ownerB.get(`/api/projects/${flagged.body.project.id}`);
+    expect(detail.body.project.similarityMatches[0].summary).toBeTruthy();
     expect(clarified.body.project.similarityStatus).toBe('clarified');
     expect(clarified.body.project.status).toBe('similarity_flagged');
 

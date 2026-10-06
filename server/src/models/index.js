@@ -72,6 +72,7 @@ const Project = sequelize.define(
     sector: { type: DataTypes.STRING(80), allowNull: false },
     suggestedSector: { type: DataTypes.STRING(80), field: 'suggested_sector' },
     stage: { type: DataTypes.STRING(60), allowNull: false },
+    country: { type: DataTypes.STRING(60), allowNull: false, defaultValue: 'Rwanda' },
     companyName: { type: DataTypes.STRING(200), field: 'company_name' },
     companyNumber: { type: DataTypes.STRING(60), unique: true, field: 'company_number' },
     relationshipToCompany: { type: DataTypes.STRING(120), field: 'relationship_to_company' },

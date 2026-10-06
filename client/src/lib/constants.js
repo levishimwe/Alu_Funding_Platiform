@@ -25,4 +25,21 @@ export const PROGRAMS = [
   'Other',
 ];
 
+// Primary operating country of a venture (pilot is Kigali-based; ventures may
+// operate across the region).
+export const COUNTRIES = [
+  'Rwanda',
+  'Burundi',
+  'DR Congo',
+  'Kenya',
+  'Tanzania',
+  'Uganda',
+  'Ethiopia',
+  'Ghana',
+  'Nigeria',
+  'South Africa',
+  'Mauritius',
+  'Other',
+];
+
 export const RELATIONSHIPS = ['Founder', 'Co-founder', 'Managing Director', 'Shareholder', 'Authorised representative'];

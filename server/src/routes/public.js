@@ -57,6 +57,7 @@ router.get('/projects', async (req, res) => {
       sector: z.string().max(80).optional(),
       type: z.enum(['idea', 'company']).optional(),
       stage: z.string().max(60).optional(),
+      country: z.string().max(60).optional(),
       q: z.string().max(100).optional(),
       page: z.coerce.number().int().min(1).default(1),
     })
@@ -65,6 +66,7 @@ router.get('/projects', async (req, res) => {
   if (q.sector) where.sector = q.sector;
   if (q.type) where.type = q.type;
   if (q.stage) where.stage = q.stage;
+  if (q.country) where.country = q.country;
   if (q.q) {
     where[Op.or] = [
       { title: { [Op.like]: `%${q.q}%` } },
