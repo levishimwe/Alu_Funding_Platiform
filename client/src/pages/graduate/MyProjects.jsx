@@ -67,10 +67,10 @@ function RowMenu({ project }) {
 export function VenturesTable({ projects, extraColumn }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[860px] text-left text-sm">
         <thead className="border-b border-line bg-subtle text-[11px] font-semibold uppercase tracking-wide text-muted">
           <tr>
-            <th className="px-4 py-2.5">Venture &amp; ID</th>
+            <th className="min-w-[15rem] px-4 py-2.5">Venture &amp; ID</th>
             <th className="px-4 py-2.5">Type / Sector</th>
             <th className="px-4 py-2.5">Verification</th>
             <th className="px-4 py-2.5">RDB file no.</th>
@@ -101,14 +101,14 @@ export function VenturesTable({ projects, extraColumn }) {
                   {p.sector} · {p.stage}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="whitespace-nowrap px-4 py-3">
                 <StatusPill status={p.status} />
               </td>
               <td className="px-4 py-3">
                 {p.companyNumber ? (
                   <span className="rounded border border-line bg-subtle px-1.5 py-0.5 font-mono text-[11px]">{p.companyNumber}</span>
                 ) : (
-                  <span className="text-xs text-muted">N/A (idea stage)</span>
+                  <span className="whitespace-nowrap text-xs text-muted">N/A (idea stage)</span>
                 )}
               </td>
               {extraColumn && <td className="px-4 py-3">{extraColumn.render(p)}</td>}

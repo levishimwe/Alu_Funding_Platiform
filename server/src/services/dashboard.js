@@ -5,7 +5,7 @@ const { User, GraduateProfile, Project, Opportunity, Introduction, Document } = 
 async function projectsWithOneConfirmedInvestor() {
   const rows = await Introduction.findAll({
     attributes: ['projectId', [fn('COUNT', fn('DISTINCT', col('investor_id'))), 'investors']],
-    where: { investmentInvestorConfirmed: true, investmentGraduateConfirmed: true },
+    where: { investmentRecordedAt: { [Op.ne]: null } },
     include: [{ model: Project, as: 'project', attributes: [], where: { status: 'approved' } }],
     group: ['projectId'],
     raw: true,

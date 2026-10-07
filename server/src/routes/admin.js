@@ -29,6 +29,7 @@ const { opportunitySchema, serializeOpportunity } = require('../services/opportu
 const { documentSummary } = require('../services/projectView');
 const audit = require('../services/audit');
 const { sendStoredFile } = require('../services/fileDelivery');
+const { recordInvestment } = require('../services/funding');
 
 const router = express.Router();
 router.use(requireRole('admin'));
@@ -269,7 +270,7 @@ router.get('/projects', async (req, res) => {
   ]);
   const confirmed = await Introduction.findAll({
     attributes: ['projectId', [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('investor_id'))), 'n']],
-    where: { investmentInvestorConfirmed: true, investmentGraduateConfirmed: true, projectId: projects.map((p) => p.id) },
+    where: { investmentRecordedAt: { [Op.ne]: null }, projectId: projects.map((p) => p.id) },
     group: ['projectId'],
     raw: true,
   });
@@ -372,6 +373,7 @@ router.get('/projects/:id', async (req, res) => {
         investor: i.investor?.fullName,
         status: i.status,
         investmentConfirmed: i.investmentInvestorConfirmed && i.investmentGraduateConfirmed,
+        investmentRecorded: Boolean(i.investmentRecordedAt),
       })),
       confirmedInvestors: await confirmedInvestorCount(p.id),
       reviews: p.reviews.map((r) => ({ id: r.id, decision: r.decision, reason: r.reason, reviewer: r.reviewer?.fullName, at: r.createdAt })),
@@ -453,7 +455,7 @@ router.post('/projects/:id/:action', async (req, res) => {
   }
   // FR13: a funding outcome is recorded only after graduate and investor confirmation.
   if (action === 'mark_funded' && (await confirmedInvestorCount(project.id)) < 1) {
-    throw badRequest('Record a funding outcome only after a graduate and an investor have both confirmed the investment.');
+    throw badRequest('Record a funding outcome only after a graduate and an investor have both confirmed the investment and it has been recorded under Introductions & Funding.');
   }
 
   const now = new Date();
@@ -493,6 +495,70 @@ router.post('/projects/:id/:action', async (req, res) => {
     });
   }
   res.json({ ok: true, status: changes.status });
+});
+
+// ---------------------------------------------------------------------------
+// Introductions & funding outcomes (FR07, FR13). The administrator records an
+// investment only after both parties confirmed it; the funding service applies
+// the two-investor limit in the same transaction.
+const INTRO_FILTERS = {
+  requested: { status: 'requested' },
+  accepted: { status: 'accepted' },
+  declined: { status: 'declined' },
+  ready: { status: 'accepted', investmentInvestorConfirmed: true, investmentGraduateConfirmed: true, investmentRecordedAt: null },
+  recorded: { investmentRecordedAt: { [Op.ne]: null } },
+  all: {},
+};
+
+router.get('/introductions', async (req, res) => {
+  const filter = INTRO_FILTERS[req.query.status] || INTRO_FILTERS.all;
+  const rows = await Introduction.findAll({
+    where: filter,
+    include: [
+      { model: Project, as: 'project', attributes: ['id', 'title', 'projectCode', 'status'], include: [{ model: User, as: 'owner', attributes: ['fullName'] }] },
+      { model: User, as: 'investor', attributes: ['fullName'], include: [{ model: InvestorProfile, as: 'investorProfile', attributes: ['organisation'] }] },
+    ],
+    order: [['updatedAt', 'DESC']],
+    limit: 200,
+  });
+  const counts = {};
+  for (const [key, where] of Object.entries(INTRO_FILTERS)) counts[key] = await Introduction.count({ where });
+  res.json({
+    counts,
+    introductions: rows.map((i) => ({
+      id: i.id,
+      status: i.status,
+      requestedAt: i.createdAt,
+      acceptedAt: i.acceptedAt,
+      project: { id: i.project.id, title: i.project.title, projectCode: i.project.projectCode, status: i.project.status, founder: i.project.owner?.fullName },
+      investor: { name: i.investor?.fullName, organisation: i.investor?.investorProfile?.organisation || null },
+      meeting: { investor: i.investorConfirmed, graduate: i.graduateConfirmed },
+      investment: { investor: i.investmentInvestorConfirmed, graduate: i.investmentGraduateConfirmed, recordedAt: i.investmentRecordedAt },
+    })),
+  });
+});
+
+router.post('/introductions/:id/record-investment', async (req, res) => {
+  const result = await recordInvestment({ introductionId: Number(req.params.id), adminId: req.user.id });
+  if (result.error === 'not_found') throw notFound('Introduction not found.');
+  if (result.error) throw badRequest(result.error);
+  const graduate = await User.findByPk(result.project.ownerId, { attributes: ['id', 'fullName', 'email'] });
+  await enqueueEmail({
+    eventKey: `investment-recorded:${result.introduction.id}:${graduate.id}`,
+    to: graduate.email,
+    recipientId: graduate.id,
+    introductionId: result.introduction.id,
+    subject: `Investment recorded for ${result.project.title}`,
+    paragraphs: [
+      `Hello ${graduate.fullName},`,
+      `An administrator recorded the investment you and the investor confirmed for "${result.project.title}" (${result.project.projectCode}).`,
+      result.statusChanged
+        ? 'Your project now has confirmed investment from two investors, so it has reached the investor limit and left active investor discovery. Its history is retained.'
+        : `Confirmed investors so far: ${result.investors} of 2.`,
+    ],
+    cta: { label: 'View project', url: `${env.clientUrl}/app/projects/${result.project.id}` },
+  });
+  res.json({ ok: true, confirmedInvestors: result.investors, projectStatus: result.project.status });
 });
 
 // ---------------------------------------------------------------------------

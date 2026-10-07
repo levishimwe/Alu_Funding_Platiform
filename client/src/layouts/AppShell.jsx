@@ -60,6 +60,7 @@ const NAV = {
         { to: '/app/admin/projects', label: 'Project Verification', icon: ClipboardCheck },
         { to: '/app/admin/graduates', label: 'Graduate Approvals', icon: UserCheck },
         { to: '/app/admin/investors', label: 'Investor Approvals', icon: Users },
+        { to: '/app/admin/introductions', label: 'Introductions & Funding', icon: Handshake },
         { to: '/app/admin/opportunities', label: 'Hackathons & Grants', icon: Trophy },
       ],
     },

@@ -199,7 +199,7 @@ describe('project verification queue', () => {
     expect(blocked.status).toBe(400);
     expect(blocked.body.error).toMatch(/both confirmed/);
 
-    // Phase 5 records confirmations through the investor flow; simulate one here.
+    // A recorded investment outcome (investor flow covered in investor.test.js).
     const { user: investor } = await investorClient();
     await Introduction.create({
       projectId: project.id,
@@ -208,6 +208,7 @@ describe('project verification queue', () => {
       acceptedAt: new Date(),
       investmentInvestorConfirmed: true,
       investmentGraduateConfirmed: true,
+      investmentRecordedAt: new Date(), // recorded by an administrator (FR13)
     });
     const queue = await admin.get('/api/admin/projects?status=approved');
     expect(queue.body.projects.find((p) => p.id === project.id).confirmedInvestors).toBe(1);

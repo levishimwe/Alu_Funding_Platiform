@@ -13,6 +13,11 @@ import ProjectDetail from './pages/graduate/ProjectDetail';
 import { PublicOpportunities, PublicProject, Ventures, VerifyProject } from './pages/public';
 import Opportunities from './pages/graduate/Opportunities';
 import Settings from './pages/Settings';
+import Introductions from './pages/Introductions';
+import Discover from './pages/investor/Discover';
+import InvestorProject from './pages/investor/InvestorProject';
+import Billing from './pages/investor/Billing';
+import AdminIntroductions from './pages/admin/AdminIntroductions';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AccountQueue from './pages/admin/AccountQueue';
 import ProjectQueue from './pages/admin/ProjectQueue';
@@ -30,11 +35,6 @@ function NotFound() {
       </EmptyState>
     </div>
   );
-}
-
-// Temporary placeholder for screens delivered in later build phases.
-function Upcoming({ title }) {
-  return <EmptyState title={title}>This screen is part of a later build phase.</EmptyState>;
 }
 
 export default function App() {
@@ -66,12 +66,21 @@ export default function App() {
               <Route path="projects/:id/edit" element={<ProjectForm />} />
               <Route path="opportunities" element={<Opportunities />} />
             </Route>
+            <Route element={<RequireAuth roles={['investor']} />}>
+              <Route path="discover" element={<Discover />} />
+              <Route path="discover/:code" element={<InvestorProject />} />
+              <Route path="billing" element={<Billing />} />
+            </Route>
+            <Route element={<RequireAuth roles={['graduate', 'investor']} />}>
+              <Route path="introductions" element={<Introductions />} />
+            </Route>
             <Route path="admin" element={<RequireAuth roles={['admin']} />}>
               <Route index element={<AdminDashboard />} />
               <Route path="graduates" element={<AccountQueue key="graduate" role="graduate" />} />
               <Route path="investors" element={<AccountQueue key="investor" role="investor" />} />
               <Route path="projects" element={<ProjectQueue />} />
               <Route path="projects/:id" element={<AdminProjectDetail />} />
+              <Route path="introductions" element={<AdminIntroductions />} />
               <Route path="opportunities" element={<AdminOpportunities />} />
               <Route path="outbox" element={<Outbox />} />
               <Route path="config" element={<RulesConfig />} />
@@ -85,7 +94,7 @@ export default function App() {
             </Route>
             <Route path="settings" element={<Settings />} />
             <Route path="settings/:section" element={<Settings />} />
-            <Route path="*" element={<Upcoming title="Coming soon" />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
       </AuthProvider>

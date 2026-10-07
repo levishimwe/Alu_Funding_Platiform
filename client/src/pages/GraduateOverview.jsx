@@ -8,7 +8,7 @@ import {
   ClipboardCheck,
   FileCheck2,
   GraduationCap,
-  Hourglass,
+  Handshake,
   MailCheck,
   Plus,
   ShieldCheck,
@@ -20,6 +20,7 @@ import { Alert, PageLoader, StatusPill, formatDate } from '../components/ui';
 import Avatar from '../components/Avatar';
 import { Breadcrumb, StatTile, relativeTime } from '../components/kit';
 import { VenturesPanel, useMyProjects } from './graduate/MyProjects';
+import ReasonDialog from '../components/ReasonDialog';
 
 function ProfileCard({ user }) {
   const g = user.graduateProfile || {};
@@ -190,22 +191,34 @@ export default function GraduateOverview() {
   const { projects, error } = useMyProjects();
   const [applications, setApplications] = useState(null);
   const [activity, setActivity] = useState(null);
+  const [intros, setIntros] = useState(null);
+  const [declining, setDeclining] = useState(null);
+  const loadIntros = () => api.get('/introductions').then((d) => setIntros(d.introductions)).catch(() => setIntros([]));
 
   useEffect(() => {
     document.title = 'Graduate Dashboard · ALU Ventures';
     refresh();
     api.get('/opportunities/applications').then((d) => setApplications(d.applications)).catch(() => setApplications([]));
     api.get('/account/activity').then((d) => setActivity(d.entries)).catch(() => setActivity([]));
-  }, [refresh]);
+    loadIntros();
+  }, [refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <Alert type="error">{error}</Alert>;
-  if (!projects || !applications) return <PageLoader />;
+  if (!projects || !applications || !intros) return <PageLoader />;
 
   const count = (...s) => projects.filter((p) => s.includes(p.status)).length;
   const approvedCount = count('approved', 'funded', 'investor_limit_reached');
   const attention = projects.filter((p) => p.status === 'revision_required' || (p.status === 'similarity_flagged' && !p.clarificationSubmittedAt));
   const underReview = applications.filter((a) => ['submitted', 'shortlisted'].includes(a.status));
-  const inReview = count('pending_review', 'similarity_flagged', 'revision_required');
+  const pendingIntros = intros.filter((i) => i.status === 'requested');
+  const interest = (p) => {
+    const mine = intros.filter((i) => i.project?.id === p.id);
+    const pending = mine.filter((i) => i.status === 'requested').length;
+    const introduced = mine.filter((i) => i.status === 'accepted').length;
+    if (pending) return <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/25 dark:bg-amber-500/15 dark:text-amber-300">{pending} intro pending</span>;
+    if (introduced) return <span className="text-xs text-green-700 dark:text-green-400">{introduced} introduced</span>;
+    return <span className="text-xs text-muted">{p.status === 'approved' ? '0 inquiries' : '—'}</span>;
+  };
   const g = user.graduateProfile || {};
 
   return (
@@ -219,6 +232,29 @@ export default function GraduateOverview() {
           </Link>
         )}
       </div>
+
+      {pendingIntros.slice(0, 1).map((i) => (
+        <div key={i.id} className="mb-3 flex flex-col gap-3 rounded-md border border-blue-200 bg-accent-soft/70 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-blue-500/30">
+          <div className="flex gap-3">
+            <Handshake className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">Action Required: Introduction Request from {i.investor.name}{i.investor.organisation ? ` (${i.investor.organisation})` : ''}</p>
+              <p className="text-sm text-muted">
+                They requested an introduction to discuss your project {i.project.title}. Review and accept or decline contact sharing.
+                {pendingIntros.length > 1 && ` ${pendingIntros.length - 1} more request${pendingIntros.length > 2 ? 's' : ''} waiting.`}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <button type="button" className="text-sm font-medium text-red-600 hover:underline dark:text-red-400" onClick={() => setDeclining(i)}>
+              Decline
+            </button>
+            <Link to="/app/introductions" className="btn-primary">
+              Review &amp; Respond <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      ))}
 
       {attention.map((p) => (
         <Alert
@@ -251,7 +287,14 @@ export default function GraduateOverview() {
           unit={`(${underReview.length} under review)`}
           status={underReview.length ? `● ${underReview.slice(0, 2).map((a) => a.opportunity?.title).join(' + ')}` : 'No open applications'}
         />
-        <StatTile label="In review" icon={Hourglass} value={inReview} unit="(awaiting admin)" status={attention.length ? `${attention.length} need your response` : 'Nothing waiting on you'} statusTone={attention.length ? 'text-amber-600 dark:text-amber-400' : 'text-muted'} />
+        <StatTile
+          label="Introductions"
+          icon={Handshake}
+          value={intros.length}
+          unit={`(${pendingIntros.length} pending response)`}
+          badge={pendingIntros.length ? <StatusPill status="requested" label="Pending Response" /> : intros.some((i) => i.status === 'accepted') ? <StatusPill status="accepted" /> : null}
+          status={intros.length ? undefined : 'No investor requests yet'}
+        />
         <StatTile label="Verified standing" icon={GraduationCap} value={g.cohortYear ? `Class of ${g.cohortYear}` : '—'} status={g.program || undefined}>
           <p className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${user.approved ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-300'}`}>
             {user.approved ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -265,7 +308,7 @@ export default function GraduateOverview() {
           {!user.approved ? (
             <PendingSteps user={user} />
           ) : projects.length ? (
-            <VenturesPanel projects={projects} />
+            <VenturesPanel projects={projects} extraColumn={{ title: 'Investor interest', render: interest }} />
           ) : (
             <div className="card flex flex-col items-center px-6 py-10 text-center">
               <h2 className="text-base font-semibold">No projects submitted yet</h2>
@@ -282,6 +325,19 @@ export default function GraduateOverview() {
           <RecentActivity entries={activity} />
         </aside>
       </div>
+      <ReasonDialog
+        open={Boolean(declining)}
+        reason="none"
+        title={`Decline the introduction from ${declining?.investor.name}?`}
+        description="The investor is told the request was declined. No contact details are shared."
+        confirmLabel="Decline"
+        tone="danger"
+        onClose={() => setDeclining(null)}
+        onConfirm={async () => {
+          await api.post(`/introductions/${declining.id}/decline`);
+          loadIntros();
+        }}
+      />
     </>
   );
 }
