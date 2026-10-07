@@ -1,13 +1,19 @@
 // Text extraction for uploaded evidence (PDF, PNG, JPEG).
-// PDFs: embedded text first; if a PDF is a scan (little or no text), bounded
-// pages are rendered to images before Tesseract.js, whose core interface does
-// not read PDFs directly. Images go straight to Tesseract.js.
+// PDFs get two passes whose texts are merged: the embedded text layer, and OCR
+// of every page rendered to an image (Tesseract.js does not read PDFs
+// directly). Wording that exists only as an image, such as a logo or a
+// letterhead, is invisible to the text layer, so the OCR pass is never
+// skipped. Images go straight to Tesseract.js.
 const path = require('path');
 const env = require('../../config/env');
 
 const MAX_PAGES = 10; // NFR03 ten-page limit
-const OCR_PAGES = 3; // certificates carry their key fields on the first pages
 const MIN_EMBEDDED_TEXT = 40;
+const PAGE_SCALE = 2;
+// Letterhead logos are small; the top band of page 1 is OCR'd again on its own
+// at a higher resolution, where Tesseract reads them far more reliably.
+const HEADER_SCALE = 3;
+const HEADER_BAND = 0.15;
 // pdfjs expects a forward-slash path with a trailing slash, even on Windows.
 const STANDARD_FONTS =
   path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts').replace(/\\/g, '/') + '/';
@@ -77,15 +83,19 @@ function itemsToLines(items) {
     .join('\n');
 }
 
-async function renderPage(page) {
+// Renders a page (or its top `band` fraction) to a PNG for OCR.
+async function renderPage(page, { scale = PAGE_SCALE, band = 1 } = {}) {
   const { createCanvas } = require('@napi-rs/canvas');
-  const viewport = page.getViewport({ scale: 2 });
+  const viewport = page.getViewport({ scale });
   const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
   const context = canvas.getContext('2d');
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: context, canvas, viewport }).promise;
-  return canvas.toBuffer('image/png');
+  if (band >= 1) return canvas.toBuffer('image/png');
+  const strip = createCanvas(canvas.width, Math.ceil(canvas.height * band));
+  strip.getContext('2d').drawImage(canvas, 0, 0);
+  return strip.toBuffer('image/png');
 }
 
 /** Returns the number of pages, or 1 for images. Used to enforce the page limit. */
@@ -98,40 +108,37 @@ async function countPages(buffer, mimeType) {
 }
 
 /**
- * @returns {Promise<{text: string, method: 'pdf-text'|'pdf-ocr'|'image-ocr', pages: number, confidence: number|null}>}
+ * @returns {Promise<{text: string, textLayer: string, ocrText: string,
+ *   method: 'pdf-text+ocr'|'pdf-ocr'|'image-ocr', pages: number, confidence: number|null}>}
  */
 async function extractText(buffer, mimeType) {
   if (mimeType !== 'application/pdf') {
     const { text, confidence } = await ocrImage(buffer);
-    return { text, method: 'image-ocr', pages: 1, confidence };
+    return { text, textLayer: '', ocrText: text, method: 'image-ocr', pages: 1, confidence };
   }
 
   const pdf = await openPdf(buffer);
   try {
     if (pdf.numPages > MAX_PAGES) throw new Error(`PDF has ${pdf.numPages} pages; the limit is ${MAX_PAGES}.`);
-    const pageTexts = [];
-    for (let n = 1; n <= pdf.numPages; n += 1) {
-      const page = await pdf.getPage(n);
-      const content = await page.getTextContent();
-      pageTexts.push(itemsToLines(content.items));
-    }
-    const embedded = pageTexts.join('\n').trim();
-    if (embedded.replace(/\s/g, '').length >= MIN_EMBEDDED_TEXT) {
-      return { text: embedded, method: 'pdf-text', pages: pdf.numPages, confidence: null };
-    }
-
-    // Scanned PDF: render the first pages and OCR them.
+    const layerTexts = [];
     const ocrTexts = [];
     const confidences = [];
-    for (let n = 1; n <= Math.min(pdf.numPages, OCR_PAGES); n += 1) {
-      const image = await renderPage(await pdf.getPage(n));
-      const { text, confidence } = await ocrImage(image);
+    for (let n = 1; n <= pdf.numPages; n += 1) {
+      const page = await pdf.getPage(n);
+      layerTexts.push(itemsToLines((await page.getTextContent()).items));
+      if (n === 1) ocrTexts.push((await ocrImage(await renderPage(page, { scale: HEADER_SCALE, band: HEADER_BAND }))).text);
+      const { text, confidence } = await ocrImage(await renderPage(page));
       ocrTexts.push(text);
       if (confidence != null) confidences.push(confidence);
     }
+    const layer = layerTexts.join('\n').trim();
+    const textLayer = layer.replace(/\s/g, '').length >= MIN_EMBEDDED_TEXT ? layer : '';
+    const ocrText = ocrTexts.join('\n').trim();
     return {
-      text: ocrTexts.join('\n'),
-      method: 'pdf-ocr',
+      text: [textLayer, ocrText].filter(Boolean).join('\n'),
+      textLayer,
+      ocrText,
+      method: textLayer ? 'pdf-text+ocr' : 'pdf-ocr',
       pages: pdf.numPages,
       confidence: confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : null,
     };

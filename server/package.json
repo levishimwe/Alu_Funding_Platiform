@@ -12,11 +12,12 @@
     "migrate:down": "node scripts/migrate.js down",
     "seed": "node scripts/seed.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
-    "samples": "node scripts/make-sample-documents.js"
+    "samples": "node scripts/make-sample-documents.js",
+    "documents:reverify": "node scripts/reverify-documents.js"
   },
   "jest": {
     "testEnvironment": "node",
-    "testTimeout": 180000,
+    "testTimeout": 300000,
     "globalSetup": "./tests/globalSetup.js",
     "testMatch": [
       "**/tests/**/*.test.js"

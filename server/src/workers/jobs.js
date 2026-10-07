@@ -13,7 +13,8 @@ const queue = [];
 let running = false;
 const idleWaiters = [];
 
-async function verify(documentId) {
+// `rerun` marks an administrator-requested re-run of the checks in the audit log.
+async function verify(documentId, { rerun = false } = {}) {
   const document = await Document.findByPk(documentId, {
     include: [
       { model: User, as: 'uploader' },
@@ -34,7 +35,7 @@ async function verify(documentId) {
       action: 'document.verification_flagged',
       entityType: 'document',
       entityId: document.id,
-      reason: `Automated pre-check: ${result.flag === 'likely_valid' ? 'Likely Valid' : 'Suspicious'}`,
+      reason: `${rerun ? 'Automated pre-check re-run' : 'Automated pre-check'}: ${result.flag === 'likely_valid' ? 'Likely Valid' : 'Suspicious'}`,
       metadata: { kind: document.kind, failedChecks: result.checks.filter((c) => !c.passed).map((c) => c.id) },
     });
   } catch (err) {
@@ -96,4 +97,4 @@ function stopWorkers() {
   if (outboxTimer) clearInterval(outboxTimer);
 }
 
-module.exports = { enqueueDocumentVerification, whenIdle, startWorkers, stopWorkers };
+module.exports = { enqueueDocumentVerification, verifyDocumentNow: verify, VERIFIABLE, whenIdle, startWorkers, stopWorkers };

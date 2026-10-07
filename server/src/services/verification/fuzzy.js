@@ -65,6 +65,43 @@ function findNameInText(text, name) {
   return best;
 }
 
+/**
+ * Looks for any of `variants` in free text, case-insensitively and tolerating
+ * OCR errors: word windows are compared with spaces removed, so a misread
+ * letter or a dropped space ("DEVELOPMENTBOARD") still matches, while a
+ * different word ("Republic of Kenya") does not. Short acronyms ("RDB") must
+ * appear as a whole word, because a fuzzy three-letter match means nothing.
+ * @returns {{ found: boolean, variant: string|null, match: string|null, score: number }}
+ */
+function findPhrase(text, variants, threshold = 0.88) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const normWords = words.map((w) => normalize(w).replace(/ /g, ''));
+  const flat = ` ${normalize(text)} `;
+  let best = { found: false, variant: null, match: null, score: 0 };
+  for (const variant of variants) {
+    const target = tokens(variant);
+    const joined = target.join('');
+    if (!joined) continue;
+    if (joined.length <= 4) {
+      const i = normWords.indexOf(joined);
+      if (i >= 0) return { found: true, variant, match: words[i], score: 1 };
+      continue;
+    }
+    if (flat.includes(` ${target.join(' ')} `)) return { found: true, variant, match: variant, score: 1 };
+    for (let len = Math.max(1, target.length - 1); len <= target.length + 1; len += 1) {
+      for (let i = 0; i + len <= words.length; i += 1) {
+        const candidate = normWords.slice(i, i + len).join('');
+        if (Math.abs(candidate.length - joined.length) > joined.length * 0.25) continue;
+        const score = ratio(candidate, joined);
+        if (score > best.score) best = { found: false, variant, match: words.slice(i, i + len).join(' '), score };
+      }
+    }
+  }
+  best.found = best.score >= threshold;
+  best.score = Math.round(best.score * 100) / 100;
+  return best;
+}
+
 // Character bigram Dice coefficient — robust for short strings such as titles.
 function diceCoefficient(a, b) {
   const x = normalize(a).replace(/ /g, '');
@@ -123,6 +160,7 @@ module.exports = {
   tokenSortRatio,
   nameSimilarity,
   findNameInText,
+  findPhrase,
   diceCoefficient,
   cosineSimilarity,
   textSimilarity,

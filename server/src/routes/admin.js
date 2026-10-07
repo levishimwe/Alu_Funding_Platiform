@@ -30,6 +30,7 @@ const { documentSummary } = require('../services/projectView');
 const audit = require('../services/audit');
 const { sendStoredFile } = require('../services/fileDelivery');
 const { recordInvestment } = require('../services/funding');
+const { verifyDocumentNow, VERIFIABLE } = require('../workers/jobs');
 
 const router = express.Router();
 router.use(requireRole('admin'));
@@ -67,6 +68,24 @@ router.get('/documents/:id/file', async (req, res) => {
   if (!document) throw notFound('Document not found.');
   await audit.record({ actorId: req.user.id, action: 'document.viewed', entityType: 'document', entityId: document.id });
   await sendStoredFile(res, { storageKey: document.storageKey, mimeType: document.mimeType, filename: document.originalName });
+});
+
+// Re-runs the automated checks on an existing submission (for example after
+// the rules improve). The administrator still decides.
+router.post('/documents/:id/reverify', async (req, res) => {
+  const document = await Document.findByPk(req.params.id, { attributes: ['id', 'kind', 'flag'] });
+  if (!document) throw notFound('Document not found.');
+  if (!VERIFIABLE.has(document.kind)) throw badRequest('Automated checks only exist for degree and RDB certificates.');
+  await verifyDocumentNow(document.id, { rerun: true });
+  const updated = await Document.findByPk(document.id);
+  await audit.record({
+    actorId: req.user.id,
+    action: 'document.verification_rerun',
+    entityType: 'document',
+    entityId: document.id,
+    reason: `Flag ${document.flag || 'none'} → ${updated.flag}`,
+  });
+  res.json({ document: documentReview(updated) });
 });
 
 router.get('/users/:id/photo', async (req, res) => {
@@ -230,7 +249,7 @@ const PROJECT_FILTERS = [
 const ISSUE = {
   name_match: 'Name mismatch',
   registration_number_match: 'Registration number mismatch',
-  unexpired: 'Expired or no validity date',
+  unexpired: 'Expired certificate',
   registration_number: 'No registration number',
   republic: 'Missing official markings',
   rdb: 'Missing official markings',
