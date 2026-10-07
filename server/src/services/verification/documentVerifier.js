@@ -4,7 +4,8 @@
 // on it and compare them with the profile name using fuzzy matching. The result
 // is a preliminary "Likely Valid" / "Suspicious" flag for an administrator —
 // never a decision.
-const { extractText } = require('./textExtraction');
+// Called through the module so tests can substitute a text-layer-only stub.
+const textExtraction = require('./textExtraction');
 const { nameSimilarity, findNameInText, findPhrase, normalize } = require('./fuzzy');
 
 const MONTHS = {
@@ -100,10 +101,13 @@ function compareName(text, candidates, expectedName, threshold) {
  * pass found it.
  */
 function phraseCheck(id, label, variants, sources) {
-  for (const [source, text] of [['text layer', sources.textLayer], ['OCR', sources.ocrText]]) {
+  for (const [source, text] of [['text layer', sources.textLayer], ['OCR text', sources.ocrText]]) {
     if (!text) continue;
     const hit = findPhrase(text, variants);
-    if (hit.found) return { id, label, passed: true, detail: `Found “${hit.match}” (${source}).` };
+    if (hit.found) {
+      const matched = normalize(hit.match) === normalize(hit.variant) ? `“${hit.variant}”` : `“${hit.variant}” (read as “${hit.match}”)`;
+      return { id, label, passed: true, detail: `Matched ${matched} in the ${source}.`, matched: hit.variant, source };
+    }
   }
   return { id, label, passed: false, detail: `None of ${variants.map((v) => `“${v}”`).join(', ')} found in the text layer or OCR.` };
 }
@@ -245,6 +249,16 @@ function peopleNameCheck(text, expectedName, threshold) {
   };
 }
 
+// Any one of these identifies the issuing registry. Fuzzy, case-insensitive;
+// "RDB" must appear as a whole word.
+const ISSUING_AUTHORITY = [
+  'Rwanda Development Board',
+  'Office of the Registrar General',
+  'Republic of Rwanda',
+  'Repubulika y’u Rwanda',
+  'RDB',
+];
+
 const RULES = {
   degree_certificate(text, { expectedName, nameThreshold }, sources) {
     const checks = [];
@@ -296,10 +310,7 @@ const RULES = {
 
   rdb_certificate(text, { expectedName, nameThreshold, companyNumber }, sources) {
     const checks = [];
-    checks.push(phraseCheck('republic', 'Mentions “Republic of Rwanda”', ['Republic of Rwanda', 'Repubulika y’u Rwanda'], sources));
-    checks.push(
-      phraseCheck('rdb', 'Mentions “Rwanda Development Board”', ['Rwanda Development Board', 'Office of the Registrar General', 'RDB'], sources)
-    );
+    checks.push(phraseCheck('issuing_authority', 'Issued by a recognised Rwandan registry', ISSUING_AUTHORITY, sources));
 
     const labelled = text.match(
       /(?:company\s+code|company\s+(?:registration\s+)?(?:no|number)|registration\s+(?:no|number|code)|reg\.?\s*no|tin)\.?\s*[:#.\-]?\s*([A-Z0-9][A-Z0-9/-]{5,19})/i
@@ -353,7 +364,7 @@ async function verifyDocument(kind, buffer, mimeType, options) {
   if (!rules) throw new Error(`No verification rules for document kind "${kind}"`);
   const nameThreshold = options.nameThreshold ?? 0.8;
 
-  const extraction = await extractText(buffer, mimeType);
+  const extraction = await textExtraction.extractText(buffer, mimeType);
   const text = extraction.text || '';
   const textFound = text.replace(/\s/g, '').length >= 20;
 

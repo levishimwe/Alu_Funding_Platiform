@@ -7,6 +7,8 @@ const { readAccountConfig, SeedConfigError } = require('../scripts/seed');
 const { TEST_ACCOUNTS } = require('./setupEnv');
 const { agent, registerGraduate, verifyEmail, approvedGraduate, investorClient, loginAs, unique } = require('./helpers');
 
+require('./helpers').stubOcr();
+
 afterAll(async () => {
   await whenIdle();
   await shutdown();

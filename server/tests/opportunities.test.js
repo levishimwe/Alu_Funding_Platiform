@@ -5,6 +5,8 @@ const { shutdown } = require('../src/services/verification/textExtraction');
 const { TEST_ACCOUNTS } = require('./setupEnv');
 const { agent, registerGraduate, verifyEmail, approvedGraduate, loginAs, unique } = require('./helpers');
 
+require('./helpers').stubOcr();
+
 afterAll(async () => {
   await whenIdle();
   await shutdown();

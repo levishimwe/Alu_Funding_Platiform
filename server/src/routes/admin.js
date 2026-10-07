@@ -251,6 +251,7 @@ const ISSUE = {
   registration_number_match: 'Registration number mismatch',
   unexpired: 'Expired certificate',
   registration_number: 'No registration number',
+  issuing_authority: 'Issuing registry not found',
   republic: 'Missing official markings',
   rdb: 'Missing official markings',
   text: 'Unreadable document',

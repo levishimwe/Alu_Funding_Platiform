@@ -6,6 +6,14 @@ const { Notification, User, GraduateProfile } = require('../src/models');
 
 const SAMPLES = path.join(__dirname, '..', 'samples');
 const sample = (name) => fs.readFileSync(path.join(SAMPLES, name));
+// Tests that are not about document verification call this at the top of the
+// file: documents are then read from their PDF text layer only, with no page
+// rendering or OCR. The verification tests run the real OCR.
+function stubOcr() {
+  const textExtraction = require('../src/services/verification/textExtraction');
+  jest.spyOn(textExtraction, 'extractText').mockImplementation(textExtraction.textLayerOnly);
+}
+
 const unique = () => `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
 
 // Agent that keeps cookies and sends the CSRF header on every request.
@@ -82,6 +90,7 @@ async function loginAs(key) {
 }
 
 module.exports = {
+  stubOcr,
   agent,
   latestCode,
   registerGraduate,

@@ -26,6 +26,8 @@ function routesOf(router, prefix) {
 const ADMIN_ROUTES = routesOf(require('../src/routes/admin'), '/api/admin');
 const STAFF_ROUTES = routesOf(require('../src/routes/staff'), '/api/staff');
 
+require('./helpers').stubOcr();
+
 const call = (client, { method, path }) => client[method === 'delete' ? 'delete' : method](path).send({});
 
 describe('admin and staff endpoints are protected on the server', () => {

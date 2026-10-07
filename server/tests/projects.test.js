@@ -4,6 +4,8 @@ const { shutdown } = require('../src/services/verification/textExtraction');
 const { buildRdbPdf } = require('../scripts/make-sample-documents');
 const { agent, registerGraduate, verifyEmail, approveGraduateDirectly, unique } = require('./helpers');
 
+require('./helpers').stubOcr();
+
 afterAll(async () => {
   await whenIdle();
   await shutdown();

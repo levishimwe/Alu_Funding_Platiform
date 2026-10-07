@@ -4,6 +4,8 @@ const { whenIdle } = require('../src/workers/jobs');
 const { shutdown } = require('../src/services/verification/textExtraction');
 const { agent, approvedGraduate, unique } = require('./helpers');
 
+require('./helpers').stubOcr();
+
 afterAll(async () => {
   await whenIdle();
   await shutdown();

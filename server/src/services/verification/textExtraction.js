@@ -1,17 +1,21 @@
 // Text extraction for uploaded evidence (PDF, PNG, JPEG).
-// PDFs get two passes whose texts are merged: the embedded text layer, and OCR
-// of every page rendered to an image (Tesseract.js does not read PDFs
-// directly). Wording that exists only as an image, such as a logo or a
-// letterhead, is invisible to the text layer, so the OCR pass is never
-// skipped. Images go straight to Tesseract.js.
+//
+// PDFs: the embedded text layer is always read, and OCR adds the wording that
+// exists only as pixels (logos, letterheads, scans); the two texts are merged.
+//   - With a text layer, only page 1 is OCR'd: the whole page, plus its top
+//     band again at a higher resolution, where letterhead logos are read far
+//     more reliably. The text layer already holds the body text of every page.
+//   - Without a text layer (a scan), every page is OCR'd.
+// Images go straight to OCR.
+//
+// Page rendering and OCR are CPU-heavy, so `extractText` runs them in worker
+// threads (see ocrPool.js); `extractTextDirect` is the code a worker executes.
 const path = require('path');
 const env = require('../../config/env');
 
 const MAX_PAGES = 10; // NFR03 ten-page limit
 const MIN_EMBEDDED_TEXT = 40;
 const PAGE_SCALE = 2;
-// Letterhead logos are small; the top band of page 1 is OCR'd again on its own
-// at a higher resolution, where Tesseract reads them far more reliably.
 const HEADER_SCALE = 3;
 const HEADER_BAND = 0.15;
 // pdfjs expects a forward-slash path with a trailing slash, even on Windows.
@@ -107,32 +111,38 @@ async function countPages(buffer, mimeType) {
   return pages;
 }
 
+async function readTextLayer(pdf) {
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n += 1) pages.push(itemsToLines((await (await pdf.getPage(n)).getTextContent()).items));
+  const layer = pages.join('\n').trim();
+  return layer.replace(/\s/g, '').length >= MIN_EMBEDDED_TEXT ? layer : '';
+}
+
 /**
+ * Runs in a worker thread (ocrPool.js); call `extractText` instead.
  * @returns {Promise<{text: string, textLayer: string, ocrText: string,
- *   method: 'pdf-text+ocr'|'pdf-ocr'|'image-ocr', pages: number, confidence: number|null}>}
+ *   method: 'pdf-text+ocr'|'pdf-ocr'|'image-ocr', pages: number, ocrPages: number, confidence: number|null}>}
  */
-async function extractText(buffer, mimeType) {
+async function extractTextDirect(buffer, mimeType) {
   if (mimeType !== 'application/pdf') {
     const { text, confidence } = await ocrImage(buffer);
-    return { text, textLayer: '', ocrText: text, method: 'image-ocr', pages: 1, confidence };
+    return { text, textLayer: '', ocrText: text, method: 'image-ocr', pages: 1, ocrPages: 1, confidence };
   }
 
   const pdf = await openPdf(buffer);
   try {
     if (pdf.numPages > MAX_PAGES) throw new Error(`PDF has ${pdf.numPages} pages; the limit is ${MAX_PAGES}.`);
-    const layerTexts = [];
+    const textLayer = await readTextLayer(pdf);
+    const ocrPages = textLayer ? 1 : pdf.numPages;
     const ocrTexts = [];
     const confidences = [];
-    for (let n = 1; n <= pdf.numPages; n += 1) {
+    for (let n = 1; n <= ocrPages; n += 1) {
       const page = await pdf.getPage(n);
-      layerTexts.push(itemsToLines((await page.getTextContent()).items));
       if (n === 1) ocrTexts.push((await ocrImage(await renderPage(page, { scale: HEADER_SCALE, band: HEADER_BAND }))).text);
       const { text, confidence } = await ocrImage(await renderPage(page));
       ocrTexts.push(text);
       if (confidence != null) confidences.push(confidence);
     }
-    const layer = layerTexts.join('\n').trim();
-    const textLayer = layer.replace(/\s/g, '').length >= MIN_EMBEDDED_TEXT ? layer : '';
     const ocrText = ocrTexts.join('\n').trim();
     return {
       text: [textLayer, ocrText].filter(Boolean).join('\n'),
@@ -140,6 +150,7 @@ async function extractText(buffer, mimeType) {
       ocrText,
       method: textLayer ? 'pdf-text+ocr' : 'pdf-ocr',
       pages: pdf.numPages,
+      ocrPages,
       confidence: confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : null,
     };
   } finally {
@@ -147,7 +158,29 @@ async function extractText(buffer, mimeType) {
   }
 }
 
+/**
+ * Text layer only, no rendering or OCR. Tests that are not about verification
+ * substitute this for `extractText` so they never run real OCR.
+ */
+async function textLayerOnly(buffer, mimeType) {
+  if (mimeType !== 'application/pdf') return { text: '', textLayer: '', ocrText: '', method: 'image-ocr', pages: 1, ocrPages: 0, confidence: null };
+  const pdf = await openPdf(buffer);
+  try {
+    const textLayer = await readTextLayer(pdf);
+    return { text: textLayer, textLayer, ocrText: '', method: 'pdf-text', pages: pdf.numPages, ocrPages: 0, confidence: null };
+  } finally {
+    await pdf.close();
+  }
+}
+
+/** Extracts text off the main thread, at most two documents at a time. */
+function extractText(buffer, mimeType) {
+  return require('./ocrPool').run(buffer, mimeType);
+}
+
+// Stops the OCR worker threads (main thread) or this thread's Tesseract worker.
 async function shutdown() {
+  await require('./ocrPool').shutdown();
   if (workerPromise) {
     const worker = await workerPromise.catch(() => null);
     workerPromise = null;
@@ -155,4 +188,4 @@ async function shutdown() {
   }
 }
 
-module.exports = { extractText, countPages, shutdown, MAX_PAGES };
+module.exports = { extractText, extractTextDirect, textLayerOnly, countPages, shutdown, MAX_PAGES };

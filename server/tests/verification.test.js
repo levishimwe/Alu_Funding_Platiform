@@ -41,19 +41,52 @@ describe('fuzzy wording variants', () => {
   });
 });
 
+describe('issuing authority', () => {
+  const { RULES } = require('../src/services/verification/documentVerifier');
+  const authority = (textLayer, ocrText = '') =>
+    RULES.rdb_certificate([textLayer, ocrText].join('\n'), { expectedName: 'Amina Uwase', nameThreshold: 0.8 }, { textLayer, ocrText }).checks.find(
+      (c) => c.id === 'issuing_authority'
+    );
+
+  test.each([
+    ['REPUBLIC OF RWANDA', 'Republic of Rwanda'],
+    ["REPUBULIKA Y'U RWANDA", 'Repubulika y’u Rwanda'],
+    ['Rwanda Development Board', 'Rwanda Development Board'],
+    ['Registered via the RDB One Stop Centre', 'RDB'],
+    ['Office of the Registrar General', 'Office of the Registrar General'],
+  ])('passes on “%s” and names the phrase and the pass', (text, phrase) => {
+    expect(authority(text)).toMatchObject({ passed: true, matched: phrase, source: 'text layer' });
+    expect(authority('', text)).toMatchObject({ passed: true, matched: phrase, source: 'OCR text' });
+  });
+
+  test('tolerates OCR errors and says what was actually read', () => {
+    expect(authority('', 'RDB| (YES\nRwanda DEVELOPMENTB0ARD').passed).toBe(true);
+    expect(authority('', 'RWANDA DEVELOPMENTBOARD')).toMatchObject({ passed: true, matched: 'Rwanda Development Board' });
+    expect(authority('', 'RWANDA DEVELOPMENTBOARD').detail).toBe(
+      'Matched “Rwanda Development Board” (read as “RWANDA DEVELOPMENTBOARD”) in the OCR text.'
+    );
+  });
+
+  test('fails on other countries and unrelated text', () => {
+    for (const text of ['REPUBLIC OF KENYA', 'Kenya Development Board', 'Republic of Uganda Registrar of Companies', 'a cardboard box from the third board meeting']) {
+      expect(authority(text, text).passed).toBe(false);
+    }
+  });
+});
+
 describe('RDB certificate checks', () => {
   test('wording that exists only in an image letterhead is found by the OCR pass', async () => {
     const pdf = await rdb({ headerAsImage: true, expires: `03/02/${nextYear + 1}` });
     const extraction = await extractText(pdf, PDF);
-    // The text layer alone would fail both wording checks.
-    expect(extraction.textLayer).not.toMatch(/republic|development\s+board|registrar/i);
+    // The text layer alone would fail the issuing-authority check.
+    expect(extraction.textLayer).not.toMatch(/republic|development\s+board|registrar|\bRDB\b/i);
     expect(extraction.textLayer).toMatch(/108345672/);
 
     const result = await verifyRdb(pdf);
     expect(result.method).toBe('pdf-text+ocr');
-    expect(check(result, 'republic')).toMatchObject({ passed: true });
-    expect(check(result, 'republic').detail).toMatch(/\(OCR\)/);
-    expect(check(result, 'rdb')).toMatchObject({ passed: true });
+    expect(result.checks.map((c) => c.id)).not.toContain('republic');
+    expect(check(result, 'issuing_authority')).toMatchObject({ passed: true, source: 'OCR text' });
+    expect(check(result, 'issuing_authority').detail).toMatch(/^Matched “(Rwanda Development Board|Republic of Rwanda)”.* in the OCR text\.$/);
     expect(check(result, 'name_match')).toMatchObject({ passed: true });
     expect(result.flag).toBe('likely_valid');
   });
@@ -68,8 +101,7 @@ describe('RDB certificate checks', () => {
       { headerLines: [{ text: 'GREEN VALLEY FARMERS MARKET', size: 22 }] }
     );
     const result = await verifyRdb(pdf);
-    expect(check(result, 'republic').passed).toBe(false);
-    expect(check(result, 'rdb').passed).toBe(false);
+    expect(check(result, 'issuing_authority').passed).toBe(false);
     expect(check(result, 'name_match').passed).toBe(false);
     expect(result.flag).toBe('suspicious');
   });
@@ -82,11 +114,10 @@ describe('RDB certificate checks', () => {
         { text: 'Company Code: 108345672', size: 14 },
         { text: 'Managing Director: Amina Uwase', size: 14 },
       ],
-      { headerLines: [{ text: 'REPUBLIC OF KENYA', size: 22 }, { text: 'BUSINESS REGISTRATION SERVICE', size: 18 }] }
+      { headerLines: [{ text: 'REPUBLIC OF KENYA', size: 22 }, { text: 'KENYA DEVELOPMENT BOARD', size: 18 }] }
     );
     const result = await verifyRdb(pdf);
-    expect(check(result, 'republic').passed).toBe(false);
-    expect(check(result, 'rdb').passed).toBe(false);
+    expect(check(result, 'issuing_authority').passed).toBe(false);
     expect(result.flag).toBe('suspicious');
   });
 
@@ -177,7 +208,7 @@ describe('degree certificate checks', () => {
     const result = await verifyDocument('degree_certificate', pdf, PDF, { expectedName: 'Amina Uwase', nameThreshold: 0.8 });
     expect(result.method).toBe('pdf-text+ocr');
     expect(check(result, 'institution')).toMatchObject({ passed: true });
-    expect(check(result, 'institution').detail).toMatch(/\(OCR\)/);
+    expect(check(result, 'institution')).toMatchObject({ source: 'OCR text', matched: 'African Leadership University' });
     expect(result.flag).toBe('likely_valid');
   });
 });
@@ -199,5 +230,44 @@ describe('re-running checks on an existing submission', () => {
     expect(res.body.document.method).toBe('pdf-text+ocr');
     await doc.reload();
     expect(doc.flag).toBe('likely_valid');
+  });
+});
+
+describe('OCR runs off the main thread', () => {
+  test('a burst of documents queues in at most two workers and the event loop stays responsive', async () => {
+    const pool = require('../src/services/verification/ocrPool');
+    const { monitorEventLoopDelay } = require('perf_hooks');
+    const pdfs = await Promise.all([1, 2, 3, 4, 5].map((i) => rdb({ number: `10834567${i}`, headerAsImage: true })));
+
+    const histogram = monitorEventLoopDelay({ resolution: 10 });
+    histogram.enable();
+    let maxBusy = 0;
+    let maxThreads = 0;
+    const sampler = setInterval(() => {
+      maxBusy = Math.max(maxBusy, pool.stats().busy);
+      maxThreads = Math.max(maxThreads, pool.stats().threads);
+    }, 20);
+    const started = Date.now();
+    const results = await Promise.all(pdfs.map((pdf) => extractText(pdf, PDF)));
+    clearInterval(sampler);
+    histogram.disable();
+
+    expect(results.every((r) => r.method === 'pdf-text+ocr' && r.ocrPages === 1)).toBe(true);
+    expect(maxBusy).toBe(pool.MAX_WORKERS);
+    expect(maxThreads).toBeLessThanOrEqual(pool.MAX_WORKERS);
+    // Rendering and OCR took seconds in total, yet the main thread never
+    // stalled for more than a fraction of a second.
+    expect(Date.now() - started).toBeGreaterThan(1000);
+    expect(histogram.max / 1e6).toBeLessThan(250);
+  });
+
+  test('a scanned PDF with no text layer is OCR’d on every page', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const scan = fs.readFileSync(path.join(__dirname, '..', 'samples', 'degree-amina-uwase-scan.pdf'));
+    const r = await extractText(scan, PDF);
+    expect(r).toMatchObject({ method: 'pdf-ocr', textLayer: '' });
+    expect(r.ocrPages).toBe(r.pages);
+    expect(r.ocrText).toMatch(/african\s+leadership/i);
   });
 });
