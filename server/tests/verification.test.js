@@ -214,7 +214,7 @@ describe('degree certificate checks', () => {
 });
 
 describe('re-running checks on an existing submission', () => {
-  test('only an administrator can re-run them, and the result is stored', async () => {
+  test('only an administrator can re-run them; the request returns at once and the result is polled', async () => {
     const { client: graduate, user } = await h.approvedGraduate();
     await whenIdle();
     const doc = await Document.findOne({ where: { uploaderId: user.id, kind: 'degree_certificate' } });
@@ -222,14 +222,18 @@ describe('re-running checks on an existing submission', () => {
 
     expect((await h.agent().post(`/api/admin/documents/${doc.id}/reverify`)).status).toBe(401);
     expect((await graduate.post(`/api/admin/documents/${doc.id}/reverify`)).status).toBe(403);
+    expect((await graduate.get(`/api/admin/documents/${doc.id}`)).status).toBe(403);
 
+    // Queued, not awaited: OCR can outlast the Vercel proxy's 120 s limit.
     const admin = await h.loginAs('admin');
     const res = await admin.post(`/api/admin/documents/${doc.id}/reverify`);
-    expect(res.status).toBe(200);
-    expect(res.body.document.flag).toBe('likely_valid');
-    expect(res.body.document.method).toBe('pdf-text+ocr');
-    await doc.reload();
-    expect(doc.flag).toBe('likely_valid');
+    expect(res.status).toBe(202);
+    expect(res.body.document.status).toBe('processing');
+
+    await whenIdle();
+    const polled = await admin.get(`/api/admin/documents/${doc.id}`);
+    expect(polled.status).toBe(200);
+    expect(polled.body.document).toMatchObject({ status: 'processed', flag: 'likely_valid', method: 'pdf-text+ocr' });
   });
 });
 

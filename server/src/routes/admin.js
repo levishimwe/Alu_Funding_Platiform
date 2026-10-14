@@ -30,7 +30,7 @@ const { documentSummary } = require('../services/projectView');
 const audit = require('../services/audit');
 const { sendStoredFile } = require('../services/fileDelivery');
 const { recordInvestment } = require('../services/funding');
-const { verifyDocumentNow, VERIFIABLE } = require('../workers/jobs');
+const { enqueueDocumentVerification, VERIFIABLE } = require('../workers/jobs');
 
 const router = express.Router();
 router.use(requireRole('admin'));
@@ -70,22 +70,33 @@ router.get('/documents/:id/file', async (req, res) => {
   await sendStoredFile(res, { storageKey: document.storageKey, mimeType: document.mimeType, filename: document.originalName });
 });
 
+// Current automated-check result for one document (polled while checks run).
+router.get('/documents/:id', async (req, res) => {
+  const document = await Document.findByPk(req.params.id);
+  if (!document) throw notFound('Document not found.');
+  res.json({ document: documentReview(document) });
+});
+
 // Re-runs the automated checks on an existing submission (for example after
-// the rules improve). The administrator still decides.
+// the rules improve). OCR can take longer than a proxy allows (Vercel: 120 s),
+// so the job is queued and the client polls GET /documents/:id until the
+// status is no longer "processing". The administrator still decides.
 router.post('/documents/:id/reverify', async (req, res) => {
-  const document = await Document.findByPk(req.params.id, { attributes: ['id', 'kind', 'flag'] });
+  const document = await Document.findByPk(req.params.id);
   if (!document) throw notFound('Document not found.');
   if (!VERIFIABLE.has(document.kind)) throw badRequest('Automated checks only exist for degree and RDB certificates.');
-  await verifyDocumentNow(document.id, { rerun: true });
-  const updated = await Document.findByPk(document.id);
+  if (document.status !== 'processing') {
+    await document.update({ status: 'processing' });
+    enqueueDocumentVerification(document.id, { rerun: true });
+  }
   await audit.record({
     actorId: req.user.id,
     action: 'document.verification_rerun',
     entityType: 'document',
     entityId: document.id,
-    reason: `Flag ${document.flag || 'none'} → ${updated.flag}`,
+    reason: `Re-run requested (flag was ${document.flag || 'none'})`,
   });
-  res.json({ document: documentReview(updated) });
+  res.status(202).json({ document: documentReview(document) });
 });
 
 router.get('/users/:id/photo', async (req, res) => {

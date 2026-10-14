@@ -1,6 +1,6 @@
 // In-process background worker (proposal §3.3.3: modules of one deployable
 // backend). Runs document verification in the background, at most
-// CONCURRENCY documents at a time (the OCR itself runs in worker threads, see
+// CONCURRENCY (OCR_POOL_SIZE) documents at a time (the OCR itself runs in worker threads, see
 // services/verification/ocrPool.js), and periodically flushes the email outbox.
 const { Document, User, Project } = require('../models');
 const storage = require('../services/storage');
@@ -10,7 +10,8 @@ const { processOutbox } = require('../services/mailer');
 const audit = require('../services/audit');
 
 const VERIFIABLE = new Set(['degree_certificate', 'rdb_certificate']);
-const CONCURRENCY = 2;
+// Matches the OCR thread pool, so a verification never waits on a busy thread.
+const CONCURRENCY = require('../config/env').ocr.poolSize;
 const queue = [];
 let active = 0;
 const idleWaiters = [];
@@ -59,9 +60,9 @@ async function verify(documentId, { rerun = false } = {}) {
 
 function drain() {
   while (active < CONCURRENCY && queue.length) {
-    const id = queue.shift();
+    const { id, options } = queue.shift();
     active += 1;
-    verify(id)
+    verify(id, options)
       .catch((err) => console.error('[worker] unexpected error:', err))
       .finally(() => {
         active -= 1;
@@ -71,8 +72,8 @@ function drain() {
   if (!active && !queue.length) while (idleWaiters.length) idleWaiters.shift()();
 }
 
-function enqueueDocumentVerification(documentId) {
-  queue.push(documentId);
+function enqueueDocumentVerification(documentId, options = {}) {
+  queue.push({ id: documentId, options });
   setImmediate(drain);
 }
 

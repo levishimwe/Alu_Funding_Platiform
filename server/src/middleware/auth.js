@@ -14,15 +14,15 @@ function setSessionCookie(res, user) {
   });
   res.cookie(COOKIE, token, {
     httpOnly: true,
-    secure: env.isProduction,
-    sameSite: 'lax',
+    secure: env.cookie.secure,
+    sameSite: env.cookie.sameSite,
     maxAge: env.sessionHours * 3600 * 1000,
     path: '/',
   });
 }
 
 function clearSessionCookie(res) {
-  res.clearCookie(COOKIE, { path: '/' });
+  res.clearCookie(COOKIE, { path: '/', httpOnly: true, secure: env.cookie.secure, sameSite: env.cookie.sameSite });
 }
 
 // Attaches req.user when a valid session cookie is present.

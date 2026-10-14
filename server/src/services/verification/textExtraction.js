@@ -29,10 +29,12 @@ let workerPromise = null;
 async function getOcrWorker() {
   if (!workerPromise) {
     const { createWorker } = require('tesseract.js');
-    // Language data is downloaded once and cached locally.
-    workerPromise = createWorker('eng', 1, {
-      cachePath: path.join(env.serverRoot, '.tesseract-cache'),
-    }).catch((err) => {
+    // Language data is downloaded once and cached locally (`npm run ocr:warm`
+    // fills the cache at build time). Tesseract only logs a failed cache write,
+    // so the folder must exist or every new OCR thread downloads it again.
+    const cachePath = path.join(env.serverRoot, '.tesseract-cache');
+    require('fs').mkdirSync(cachePath, { recursive: true });
+    workerPromise = createWorker('eng', 1, { cachePath }).catch((err) => {
       workerPromise = null;
       throw err;
     });

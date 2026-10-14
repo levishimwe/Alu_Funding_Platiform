@@ -13,7 +13,10 @@
     "seed": "node scripts/seed.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "samples": "node scripts/make-sample-documents.js",
-    "documents:reverify": "node scripts/reverify-documents.js"
+    "documents:reverify": "node scripts/reverify-documents.js",
+    "release": "node scripts/migrate.js up && node scripts/seed.js",
+    "ocr:warm": "node scripts/warm-ocr.js",
+    "storage:copy-to-s3": "node scripts/copy-uploads-to-s3.js"
   },
   "jest": {
     "testEnvironment": "node",
@@ -27,6 +30,7 @@
     ]
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@napi-rs/canvas": "^1.0.10",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
@@ -51,5 +55,8 @@
     "nodemon": "^3.1.14",
     "pdf-lib": "^1.17.1",
     "supertest": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=22 <23"
   }
 }

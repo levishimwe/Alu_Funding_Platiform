@@ -19,28 +19,52 @@ function CheckIcon({ check }) {
   return <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-label="Needs attention" />;
 }
 
+const POLL_MS = 3000;
+
 // Administrator review panel: the uploaded document (served only through the
 // admin endpoint) beside its automated pre-check. The flag is a review aid;
 // the administrator decides.
 export default function VerificationChecks({ document: initial, title }) {
   const [document, setDocument] = useState(initial);
-  const [rerunning, setRerunning] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => setDocument(initial), [initial]);
 
+  // Checks run in the background (OCR can outlast a proxy's timeout), so while
+  // a document is processing the panel polls for the result.
+  const processing = document?.status === 'processing';
+  const id = document?.id;
+  useEffect(() => {
+    if (!processing || !id) return undefined;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const res = await api.get(`/admin/documents/${id}`);
+        if (!cancelled && res.document.status !== 'processing') setDocument((d) => ({ ...d, ...res.document }));
+      } catch {
+        // Try again on the next tick.
+      }
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [processing, id]);
+
   if (!document) return <p className="text-sm text-muted">No document uploaded.</p>;
-  const pending = !document.flag && document.status === 'processing';
+  const pending = !document.flag && processing;
+  const rerunning = requesting || (processing && Boolean(document.flag));
 
   const rerun = async () => {
-    setRerunning(true);
+    setRequesting(true);
     setError('');
     try {
       const res = await api.post(`/admin/documents/${document.id}/reverify`);
-      setDocument((d) => ({ ...d, ...res.document }));
+      setDocument((d) => ({ ...d, ...res.document, status: 'processing' }));
     } catch (e) {
       setError(e.message);
     } finally {
-      setRerunning(false);
+      setRequesting(false);
     }
   };
 
@@ -53,7 +77,7 @@ export default function VerificationChecks({ document: initial, title }) {
           <StatusPill status={pending || rerunning ? 'processing' : document.flag} />
         </div>
         {pending ? (
-          <p className="p-3 text-sm text-muted">The automated check is still running.</p>
+          <p className="p-3 text-sm text-muted">The automated check is still running. This panel updates when it finishes.</p>
         ) : (
           <div className="space-y-2 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Automated checks</p>

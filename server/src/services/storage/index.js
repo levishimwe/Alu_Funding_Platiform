@@ -1,7 +1,9 @@
 // Private document storage behind a small driver interface so business logic
-// only ever handles opaque storage keys. To move to Hetzner Object Storage
-// (S3-compatible), add an `s3` driver with the same four methods and set
-// STORAGE_DRIVER=s3 — nothing else needs to change.
+// only ever handles opaque storage keys. STORAGE_DRIVER selects the driver:
+//   local - files under server/uploads (development; Render's disk is ephemeral)
+//   s3    - an S3-compatible private bucket (Cloudflare R2, Hetzner Object
+//           Storage, AWS S3); see ./s3.js
+// Both expose put / get / remove / exists, and nothing else needs to change.
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
@@ -43,6 +45,7 @@ function localDriver(rootDir) {
 
 const drivers = {
   local: () => localDriver(env.storage.localDir),
+  s3: () => require('./s3').s3Driver(env.storage.s3),
 };
 
 if (!drivers[env.storage.driver]) {
